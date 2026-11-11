@@ -39,3 +39,4 @@ crashlytics-build.properties
 .DS_Store
 *.slnx
 /Assets/Resources/PerformanceTestRun*
+/.utmp/

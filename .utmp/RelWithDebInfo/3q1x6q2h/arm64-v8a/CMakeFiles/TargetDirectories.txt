@@ -1,5 +1,0 @@
-/Users/mathiasbecerrasanchez/Unity/Reachoreo/.utmp/RelWithDebInfo/3q1x6q2h/arm64-v8a/CMakeFiles/edit_cache.dir
-/Users/mathiasbecerrasanchez/Unity/Reachoreo/.utmp/RelWithDebInfo/3q1x6q2h/arm64-v8a/CMakeFiles/rebuild_cache.dir
-/Users/mathiasbecerrasanchez/Unity/Reachoreo/.utmp/RelWithDebInfo/3q1x6q2h/arm64-v8a/GameActivity/CMakeFiles/game.dir
-/Users/mathiasbecerrasanchez/Unity/Reachoreo/.utmp/RelWithDebInfo/3q1x6q2h/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
-/Users/mathiasbecerrasanchez/Unity/Reachoreo/.utmp/RelWithDebInfo/3q1x6q2h/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir
