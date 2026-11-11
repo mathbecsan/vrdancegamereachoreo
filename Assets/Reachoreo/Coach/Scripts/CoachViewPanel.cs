@@ -32,6 +32,8 @@ namespace Reachoreo
 
         void OnEnable()
         {
+            // In any place, find the coach of the same PlaceRig if it isn't linked by hand.
+            if (coach == null && transform.parent != null) coach = transform.parent.GetComponentInChildren<DanceCoach>(true);
             if (backToYouButton != null) backToYouButton.onClick.AddListener(PickBackToYou);
             if (facingYouButton != null) facingYouButton.onClick.AddListener(PickFacingYou);
             Refresh(true);
