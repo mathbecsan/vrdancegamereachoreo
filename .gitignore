@@ -38,3 +38,4 @@ crashlytics-build.properties
 # macOS
 .DS_Store
 *.slnx
+/Assets/Resources/PerformanceTestRun*
