@@ -60,9 +60,10 @@ namespace Reachoreo
             if (director == null) director = GetComponent<PerformanceDirector>() ?? FindFirstObjectByType<PerformanceDirector>();
         }
 
-        void Start()
+        System.Collections.IEnumerator Start()
         {
             GameSession.Load();
+            if (!DanceLibrary.Loaded) yield return DanceLibrary.LoadAll();
             if (GameSession.Song == null && DanceLibrary.All.Count > 0) GameSession.Song = DanceLibrary.All[0];
             var oldPanel = transform.parent != null ? transform.parent.Find("Coach_View_Panel") : null;
             if (oldPanel != null) oldPanel.gameObject.SetActive(false);   // the coach view now lives in Settings and Configuration
@@ -186,16 +187,20 @@ namespace Reachoreo
         void BuildSongs()
         {
             var s = NewScreen("songs", "Choose a song");
+            s.live = true;
             s.continueLabel = "Continue"; s.canContinue = () => GameSession.Song != null; s.onContinue = () => Go("config");
             var row = UiKit.HStack(s.root, "Songs", 18); UiKit.Stretch(row);
             row.GetComponent<HorizontalLayoutGroup>().childAlignment = TextAnchor.UpperLeft;
 
             var filters = UiKit.VStack(row, "Filters", 8); UiKit.Size(filters, 210, flexW: 0, flexH: 1);
             var filterButtons = new List<(Button, string)>();
-            foreach (var f in new[] { "All songs", "Latin rhythms", "Salsa", "Cumbia", "Bachata", "Marinera", "Favorites" })
+            var labels = new List<string> { "All songs", "My songs" };
+            foreach (var (label, _) in DanceLibrary.Groups) labels.Add(label);
+            labels.Add("Favorites");
+            foreach (var f in labels)
             {
                 var name = f;
-                var b = UiKit.Button(filters, f, () => { filter = name; Refresh(); }, UiKit.Style.Secondary, -1, 52, 21);
+                var b = UiKit.Button(filters, f, () => { filter = name; Refresh(); }, UiKit.Style.Secondary, -1, 46, 20);
                 filterButtons.Add((b, f));
             }
             s.refresh.Add(() => { foreach (var (b, f) in filterButtons) UiKit.SetSelected(b, f == filter); });
@@ -209,9 +214,9 @@ namespace Reachoreo
             s.refresh.Add(RefreshSongGrid);
 
             var info = UiKit.Panel(row, "Info", UiKit.CardDim, 18, 8); UiKit.Size(info, 290, flexW: 0, flexH: 1);
-            var title = UiKit.Text(info, "", 30, UiKit.Ink, true); UiKit.Size(title, h: 40);
+            var title = UiKit.Text(info, "", 27, UiKit.Ink, true); UiKit.Size(title, h: 70);
             var artist = UiKit.Text(info, "", 20, UiKit.Mute); UiKit.Size(artist, h: 28);
-            var facts = UiKit.Text(info, "", 19, UiKit.Ink); UiKit.Size(facts, h: 110);
+            var facts = UiKit.Text(info, "", 19, UiKit.Ink); UiKit.Size(facts, h: 90);
             var preview = UiKit.Text(info, "", 18, UiKit.Mute); UiKit.Size(preview, h: 120);
             UiKit.Spacer(info, true);
             var fav = UiKit.Button(info, "Save to favorites", () => { var d = GameSession.Song; GameSession.SetFavorite(d, !GameSession.IsFavorite(d)); Refresh(); }, UiKit.Style.Secondary, -1, 54, 21);
@@ -222,8 +227,9 @@ namespace Reachoreo
                 if (d == null) return;
                 title.text = d.title; artist.text = d.artist;
                 facts.text = $"{d.styleLabel}  ·  {d.bpm:0} BPM\nDuration {Clock(d.durationSec)}\nDifficulty: {d.DifficultyLabel} {Dots(d.difficulty)}";
-                preview.text = "The Reachys beside you are playing a preview of the choreography (" + d.PhraseAt(d.previewStart) + ")." +
-                               (d.hasMusicFile ? "" : "\nMusic: click track at the song's tempo until the song file is added.");
+                preview.text = "The Reachys and the coach are previewing the choreography (" + d.PhraseAt(d.previewStart) + ")." +
+                               (!d.hasMusicFile ? "\nMusic: click track at the dance's tempo." : d.songLoading ? "\nLoading the song..." : "") +
+                               (d.personal ? "\nYour song: it stays on this headset." : d.Credit != null ? "\nMusic: " + d.Credit : "");
                 UiKit.SetLabel(fav, GameSession.IsFavorite(d) ? "In favorites" : "Save to favorites");
                 UiKit.SetSelected(fav, GameSession.IsFavorite(d), UiKit.Teal);
             });
@@ -238,7 +244,8 @@ namespace Reachoreo
             var tile = UiKit.Box(col, "Art"); UiKit.Size(tile, h: 120); UiKit.Fill(tile, d.color);
             var initial = UiKit.Text(tile, d.title.Substring(0, 1), 64, new Color(1, 1, 1, 0.85f), true, TextAlignmentOptions.Center); UiKit.Stretch((RectTransform)initial.transform);
             var tag = UiKit.Text(tile, d.styleLabel.ToUpperInvariant(), 14, new Color(1, 1, 1, 0.8f), true, TextAlignmentOptions.BottomLeft); UiKit.Stretch((RectTransform)tag.transform, 10);
-            UiKit.Size(UiKit.Text(col, d.title, 24, UiKit.Ink, true), h: 30);
+            var cardTitle = UiKit.Text(col, d.title, 24, UiKit.Ink, true); UiKit.Size(cardTitle, h: 30);
+            cardTitle.textWrappingMode = TextWrappingModes.NoWrap; cardTitle.overflowMode = TextOverflowModes.Ellipsis;
             UiKit.Size(UiKit.Text(col, d.artist, 17, UiKit.Mute), h: 22);
             UiKit.Size(UiKit.Text(col, $"{d.bpm:0} BPM · {Clock(d.durationSec)} · {d.DifficultyLabel}", 16, UiKit.Mute), h: 22);
             return card;
@@ -249,15 +256,16 @@ namespace Reachoreo
             int shown = 0;
             foreach (var (card, d) in songCards)
             {
-                bool match = filter == "All songs" || (filter == "Latin rhythms" && d.IsLatin) || (filter == "Favorites" && GameSession.IsFavorite(d)) ||
-                             DanceLibrary.StyleName(d.style) == filter;
+                bool match = filter == "All songs" || (filter == "My songs" && d.personal) || (filter == "Favorites" && GameSession.IsFavorite(d)) ||
+                             d.StyleGroup == filter;
                 card.gameObject.SetActive(match);
                 UiKit.SetSelected(card, d == GameSession.Song, new Color(0.34f, 0.22f, 0.19f, 1f));
                 if (match) shown++;
             }
             songEmpty.text = shown > 0 ? "" : filter == "Favorites"
                 ? "No favorites yet. Select a song and press \"Save to favorites\"."
-                : "No " + filter.ToLowerInvariant() + " dances yet.\nDances you make with the Reachoreo app will appear here.";
+                : filter == "My songs" ? "No songs of your own yet.\nMake a dance from your song in the Reachoreo app and send it to the headset: it will appear here and stay private."
+                : "No " + filter.ToLowerInvariant() + " dances yet.\nMore songs are coming to the library.";
         }
 
         // ---------- 03 Dance configuration ----------
@@ -380,9 +388,12 @@ namespace Reachoreo
                 director.BodyTracked ? (UiKit.Good, "Body tracking: tracking you") : (UiKit.Warn, "Body tracking: not detected yet. Stand on the cross with your arms in view."));
             Check(s, right, () => (UiKit.Good, "Reachys: virtual Reachys ready"));
             Check(s, right, () => (UiKit.Faint, "Real robots: not connected (comes with the Reachoreo app link)"));
-            Check(s, right, () => (UiKit.Good, $"Sync: coach and Reachys follow the same {(GameSession.Song != null ? GameSession.Song.bpm : 120):0} BPM clock"));
-            Check(s, right, () => GameSession.Song != null && GameSession.Song.hasMusicFile
-                ? (UiKit.Good, "Audio: song ready") : (UiKit.Warn, "Audio: click track at the song's tempo (song file not added yet)"));
+            Check(s, right, () => (UiKit.Good, GameSession.Song != null && GameSession.Song.hasMusicFile
+                ? "Sync: coach and Reachys follow the song's tracked counts" : $"Sync: coach and Reachys follow the same {(GameSession.Song != null ? GameSession.Song.bpm : 120):0} BPM clock"));
+            Check(s, right, () => GameSession.Song == null ? (UiKit.Faint, "Audio: no song selected")
+                : !GameSession.Song.hasMusicFile ? (UiKit.Warn, "Audio: click track at the dance's tempo (this dance has no song file)")
+                : GameSession.Song.songClip != null ? (UiKit.Good, "Audio: song ready, the dance follows its real beats")
+                : (UiKit.Warn, "Audio: loading the song..."));
             UiKit.Spacer(right, true);
             UiKit.Size(UiKit.Text(right, "Give yourself about 2 x 2 m of clear space. You stay on your mark the whole dance.", 17, UiKit.Faint), h: 50);
         }
@@ -438,7 +449,7 @@ namespace Reachoreo
             UiKit.Size(UiKit.Text(c2,
                 "Reachoreo VR, early build.\n\n" +
                 "Reachy Mini 3D model and rig by Clement Plays, published by Pollen Robotics (Apache-2.0).\n\n" +
-                "Music: click track for now. Coach, avatar and rooms: made for Reachoreo.", 18, UiKit.Ink), h: 330);
+                "Coach, avatar and rooms: made for Reachoreo.\n\n" + MusicCredits(), 17, UiKit.Ink), h: 330);
         }
 
         // ---------- 06 Summary ----------
@@ -557,7 +568,7 @@ namespace Reachoreo
 
             if (free)
             {
-                hudPhrase.text = "Free dance: move however you like";
+                hudPhrase.text = "Free dance: " + (director.song != null ? director.song.title : "") + " · move however you like";
                 hudTime.text = Clock(director.Elapsed);
                 hudFill.anchorMax = new Vector2(0, 1);
                 hudBig.text = paused ? "Paused" : "";
@@ -569,6 +580,7 @@ namespace Reachoreo
             hudTime.text = Clock(director.DanceTime - sec.start) + " / " + Clock(sec.end - sec.start);
             hudFill.anchorMax = new Vector2(director.Progress01, 1);
             if (paused) { hudBig.text = "Paused"; hudBig.color = UiKit.Ink; hudSmall.text = ""; return; }
+            if (st == PerformanceDirector.State.Loading) { hudBig.text = "Loading song"; hudBig.color = UiKit.Mute; hudSmall.text = ""; return; }
             if (st == PerformanceDirector.State.CountIn)
             {
                 int n = Mathf.CeilToInt(director.CountInLeft * song.bpm / 60f);
@@ -587,6 +599,13 @@ namespace Reachoreo
         {
             seconds = Mathf.Max(0f, seconds);
             return $"{(int)(seconds / 60)}:{(int)(seconds % 60):00}";
+        }
+
+        static string MusicCredits()
+        {
+            var lines = new List<string>();
+            foreach (var d in DanceLibrary.All) if (d.Credit != null) lines.Add("\u2022 " + d.Credit);
+            return lines.Count > 0 ? "Music:\n" + string.Join("\n", lines) : "Music: Encendido uses a click track. Your own songs stay on this headset.";
         }
 
         static string Dots(int n) => new string('●', Mathf.Clamp(n, 0, 3)) + new string('○', 3 - Mathf.Clamp(n, 0, 3));

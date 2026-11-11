@@ -40,3 +40,6 @@ crashlytics-build.properties
 *.slnx
 /Assets/Resources/PerformanceTestRun*
 /.utmp/
+
+# Personal dances (your own songs) never go in the project: they live on the headset only.
+/Assets/StreamingAssets/Dances/**/song.*

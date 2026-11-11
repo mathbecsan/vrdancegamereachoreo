@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 namespace Reachoreo
@@ -13,7 +14,7 @@ namespace Reachoreo
     /// </summary>
     public class PerformanceDirector : MonoBehaviour
     {
-        public enum State { Menu, Preview, CountIn, Playing, Paused, FreeDance, Finished }
+        public enum State { Menu, Preview, Loading, CountIn, Playing, Paused, FreeDance, Finished }
 
         public EncendidoRobotPlayer robots;
         public DanceCoach coach;
@@ -25,9 +26,10 @@ namespace Reachoreo
         public DanceSection section { get; private set; }
 
         // Clock
-        float danceTime;          // seconds into the dance (score time)
+        float danceTime;          // seconds of dance time (0 = the first downbeat)
         float countIn;            // seconds of count-in left
         float elapsed;            // seconds performed
+        float loopStart, loopEnd; // previews and free dance
         State resumeTo;
 
         // Results
@@ -40,12 +42,13 @@ namespace Reachoreo
         public float DanceTime => danceTime;
         public float Progress01 => section == null ? 0f : Mathf.Clamp01((danceTime - section.start) / Mathf.Max(0.01f, section.end - section.start));
         public bool BodyTracked => body != null && body.IsInitialized && body.IsDataValid;
+        public bool PlayingRealSong => music.clip != null && music.isPlaying;
         public event Action Finished;
 
         float scoreSum; int judgedBeats, totalBeats, trackedBeats;
         float beatScoreSum; int beatFrames, beatTrackedFrames; int lastBeat = -1;
 
-        AudioSource click;
+        AudioSource click, music;
 
         void Awake()
         {
@@ -57,6 +60,8 @@ namespace Reachoreo
             if (avatar == null) avatar = FindFirstObjectByType<SelfAvatar>();
             click = gameObject.AddComponent<AudioSource>();
             click.playOnAwake = false; click.loop = true; click.spatialBlend = 0f;
+            music = gameObject.AddComponent<AudioSource>();
+            music.playOnAwake = false; music.loop = false; music.spatialBlend = 0f;
         }
 
         void Start()
@@ -68,70 +73,92 @@ namespace Reachoreo
 
         public void ApplySettings()
         {
-            click.volume = GameSession.MusicVolume;
+            click.volume = GameSession.MusicVolume * 0.7f;
+            music.volume = GameSession.MusicVolume;
             if (avatar != null) avatar.SetShowInFirstPerson(GameSession.ShowBodyFirstPerson);
         }
+
+        float Downbeat => song != null && song.hasMusicFile ? song.data.song.firstDownbeat : 0f;
+        float Bpm => song == null ? 120f : song.data != null && song.data.countBpm > 0 ? song.data.countBpm : song.bpm;
 
         // ---------- States ----------
 
         public void ToMenu()
         {
             Time.timeScale = 1f;
-            click.Stop();
+            StopAudio();
             state = State.Menu;
             robots.SetEnabled(true, true); robots.bothDanceA = false; robots.Idle();
-            if (coach != null) { coach.gameObject.SetActive(true); coach.playWarmup = true; }
+            if (coach != null) { coach.gameObject.SetActive(true); coach.StopDancePose(); }
         }
 
         public void Preview(DanceInfo d)
         {
             if (d == null) { ToMenu(); return; }
-            song = d; state = State.Preview;
+            Use(d); state = State.Preview;
             robots.SetEnabled(true, true); robots.bothDanceA = false;
-            robots.PlayLoop(d.previewStart, d.previewStart + d.previewLength);
-            PlayClick(d.bpm);
+            loopStart = d.previewStart; loopEnd = Mathf.Min(d.durationSec, d.previewStart + d.previewLength);
+            danceTime = loopStart;
+            StopAudio();
+            if (d.hasMusicFile) StartCoroutine(WhenSongReady(d, () => { if (state == State.Preview && song == d) PlayMusicAt(danceTime); }));
+            else PlayClick(Bpm);
         }
 
         public void StartDance(DanceInfo d, int sectionIndex)
         {
-            song = d; section = d.sections[Mathf.Clamp(sectionIndex, 0, d.sections.Count - 1)];
+            Use(d); section = d.sections[Mathf.Clamp(sectionIndex, 0, d.sections.Count - 1)];
             Time.timeScale = 1f;
+            StopAudio();
             robots.SetEnabled(GameSession.LeftReachy, GameSession.RightReachy);
             robots.bothDanceA = GameSession.ReachysInSync;
             robots.Drive(section.start);
-            if (coach != null) { coach.gameObject.SetActive(GameSession.ShowCoach); coach.playWarmup = true; }
+            if (coach != null) coach.gameObject.SetActive(GameSession.ShowCoach);
             ResetScore();
             danceTime = section.start; elapsed = 0f;
-            countIn = GameSession.CountIn ? 4f * 60f / d.bpm : 0f;
-            state = countIn > 0f ? State.CountIn : State.Playing;
-            PlayClick(d.bpm);
+            if (d.hasMusicFile && d.songClip == null) { state = State.Loading; StartCoroutine(WhenSongReady(d, () => { if (state == State.Loading && song == d) BeginCountIn(); })); }
+            else BeginCountIn();
+        }
+
+        void BeginCountIn()
+        {
+            countIn = GameSession.CountIn ? 4f * 60f / Bpm : 0f;
+            PlayClick(Bpm);
+            if (countIn > 0f) state = State.CountIn; else StartPlaying();
+        }
+
+        void StartPlaying()
+        {
+            state = State.Playing;
+            if (song.hasMusicFile && song.songClip != null) { click.Stop(); PlayMusicAt(danceTime); }
         }
 
         public void StartFreeDance()
         {
-            song = DanceLibrary.All[0]; section = null;
+            var d = GameSession.Song ?? (DanceLibrary.All.Count > 0 ? DanceLibrary.All[0] : null);
+            if (d == null) return;
+            Use(d); section = null;
             Time.timeScale = 1f;
+            StopAudio();
             robots.SetEnabled(GameSession.LeftReachy, GameSession.RightReachy);
             robots.bothDanceA = GameSession.ReachysInSync;
-            var energetic = song.sections[song.sections.Count - 1];
-            robots.PlayLoop(energetic.start, energetic.end);
             if (coach != null) coach.gameObject.SetActive(false);   // free dance: nobody to follow
-            elapsed = 0f;
+            loopStart = 0f; loopEnd = d.durationSec; danceTime = 0f; elapsed = 0f;
             state = State.FreeDance;
-            PlayClick(song.bpm);
+            if (d.hasMusicFile) StartCoroutine(WhenSongReady(d, () => { if (state == State.FreeDance && song == d) PlayMusicAt(danceTime); }));
+            else PlayClick(Bpm);
         }
 
         public void Pause()
         {
             if (state != State.Playing && state != State.CountIn && state != State.FreeDance) return;
             resumeTo = state; state = State.Paused;
-            Time.timeScale = 0f; click.Pause();
+            Time.timeScale = 0f; click.Pause(); music.Pause();
         }
 
         public void Resume()
         {
             if (state != State.Paused) return;
-            state = resumeTo; Time.timeScale = 1f; click.UnPause();
+            state = resumeTo; Time.timeScale = 1f; click.UnPause(); music.UnPause();
         }
 
         public void Restart()
@@ -143,16 +170,42 @@ namespace Reachoreo
         public void Finish()
         {
             Time.timeScale = 1f;
-            click.Stop();
+            StopAudio();
             state = State.Finished;
             robots.Idle();
+            if (coach != null) coach.StopDancePose();
             Finished?.Invoke();
         }
+
+        void Use(DanceInfo d)
+        {
+            if (song != d) robots.LoadDance(d.data);
+            song = d;
+        }
+
+        IEnumerator WhenSongReady(DanceInfo d, Action then)
+        {
+            yield return DanceLibrary.LoadSong(d);
+            while (d.songLoading) yield return null;
+            then();
+        }
+
+        void PlayMusicAt(float t)
+        {
+            if (song.songClip == null) { PlayClick(Bpm); return; }
+            click.Stop();
+            music.clip = song.songClip;
+            music.volume = GameSession.MusicVolume;
+            music.time = Mathf.Clamp(t + Downbeat, 0f, song.songClip.length - 0.05f);
+            music.Play();
+        }
+
+        void StopAudio() { click.Stop(); music.Stop(); }
 
         void PlayClick(float bpm)
         {
             click.clip = MakeClickBar(bpm);
-            click.volume = GameSession.MusicVolume;
+            click.volume = GameSession.MusicVolume * 0.7f;
             click.Play();
         }
 
@@ -161,19 +214,40 @@ namespace Reachoreo
         void Update()
         {
             float dt = Time.deltaTime;
-            if (state == State.CountIn)
+            switch (state)
             {
-                countIn -= dt;
-                if (countIn <= 0f) { state = State.Playing; dt = -countIn; countIn = 0f; } else return;
+                case State.Preview:
+                case State.FreeDance:
+                    // Follow the music when it plays, else our own clock; loop the stretch.
+                    if (music.isPlaying) danceTime = music.time - Downbeat; else danceTime += dt;
+                    elapsed += dt;
+                    if (danceTime >= loopEnd || danceTime < loopStart - 1f)
+                    {
+                        danceTime = loopStart;
+                        if (music.clip != null && (music.isPlaying || song.songClip != null)) PlayMusicAt(danceTime);
+                    }
+                    robots.Drive(danceTime);
+                    if (state == State.Preview && coach != null && song.data.dancer != null && coach.isActiveAndEnabled) coach.PoseFromDance(song.data, danceTime);
+                    return;
+                case State.CountIn:
+                    countIn -= dt;
+                    if (coach != null && coach.isActiveAndEnabled) coach.PoseFromDance(song.data, section.start);
+                    if (countIn <= 0f) StartPlaying();
+                    return;
+                case State.Playing:
+                    break;
+                default:
+                    return;
             }
-            if (state == State.FreeDance) { elapsed += dt; return; }
-            if (state != State.Playing) return;
 
-            danceTime += dt; elapsed += dt;
+            danceTime = music.isPlaying ? music.time - Downbeat : danceTime + dt;
+            elapsed += dt;
             robots.Drive(danceTime);
+            if (coach != null && coach.isActiveAndEnabled) coach.PoseFromDance(song.data, danceTime);
             Score(dt);
             LastJudgementAge += dt;
-            if (danceTime >= section.end) Finish();
+            bool songOver = song.hasMusicFile && music.clip != null && !music.isPlaying && Time.timeScale > 0f && elapsed > 1f;
+            if (danceTime >= section.end || songOver) Finish();
         }
 
         // ---------- Sync score ----------
@@ -188,13 +262,25 @@ namespace Reachoreo
 
         void Score(float dt)
         {
-            int beat = Mathf.FloorToInt((danceTime - section.start) * song.bpm / 60f);
+            int beat = CountIndex(danceTime);
             if (lastBeat < 0) lastBeat = beat;
             if (beat != lastBeat) { JudgeBeat(); lastBeat = beat; }
 
             beatFrames++;
             if (!BodyTracked || coach == null || !coach.gameObject.activeInHierarchy) return;
             if (TryFrameScore(out float s)) { beatTrackedFrames++; beatScoreSum += s; }
+        }
+
+        /// <summary>Which count of the dance a time falls in, using the song's tracked counts when it has them.</summary>
+        int CountIndex(float t)
+        {
+            var c = song.data != null ? song.data.counts : null;
+            if (c == null || c.Length < 2) return Mathf.FloorToInt(t * Bpm / 60f);
+            int lo = 0, hi = c.Length - 1;
+            if (t <= c[0]) return 0;
+            if (t >= c[hi]) return hi;
+            while (hi - lo > 1) { int m = (lo + hi) >> 1; if (c[m] <= t) lo = m; else hi = m; }
+            return lo;
         }
 
         void JudgeBeat()

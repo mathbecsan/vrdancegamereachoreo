@@ -42,6 +42,22 @@ namespace Reachoreo
         public float Time01 => Duration > 0f ? t / Duration : 0f;
         public float CurrentTime => t;
 
+        /// <summary>Use a dance file's robot parts (Reachy A = the left robot, B = the right one).</summary>
+        public void LoadDance(DanceFile d)
+        {
+            if (d == null || d.robotA == null || d.frames <= 0) return;
+            step = 1f / Mathf.Max(1f, d.frameRate);
+            framesA = Unflatten(d.robotA, d.frames);
+            framesB = Unflatten(d.robotB, d.frames);
+        }
+
+        static float[][] Unflatten(float[] flat, int frames)
+        {
+            var f = new float[frames][];
+            for (int i = 0; i < frames; i++) { f[i] = new float[8]; System.Array.Copy(flat, i * 8, f[i], 0, 8); }
+            return f;
+        }
+
         public void Idle() { mode = Mode.Idle; }
         public void PlayLoop(float start, float end) { mode = Mode.Loop; loopStart = start; loopEnd = end; t = start; }
         public void Drive(float time) { mode = Mode.Driven; t = Mathf.Clamp(time, 0f, Duration); Apply(); }
