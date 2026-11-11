@@ -29,6 +29,10 @@ namespace Reachoreo
         public static SyncTolerance Tolerance = SyncTolerance.Normal;
         public static bool ShowBodyFirstPerson = true;
 
+        // Calibration (measured once, redo from Settings)
+        public static bool Calibrated;
+        public static float Height, ArmSpan, ArmLength, ShoulderWidth;
+
         static readonly HashSet<string> favorites = new HashSet<string>();
         static bool loaded;
 
@@ -40,6 +44,9 @@ namespace Reachoreo
             RobotVolume = PlayerPrefs.GetFloat("robot_volume", RobotVolume);
             Tolerance = (SyncTolerance)PlayerPrefs.GetInt("sync_tolerance", (int)Tolerance);
             ShowBodyFirstPerson = PlayerPrefs.GetInt("body_first_person_v2", 1) == 1;
+            Calibrated = PlayerPrefs.GetInt("calibrated", 0) == 1;
+            Height = PlayerPrefs.GetFloat("cal_height", 0f); ArmSpan = PlayerPrefs.GetFloat("cal_span", 0f);
+            ArmLength = PlayerPrefs.GetFloat("cal_arm", 0f); ShoulderWidth = PlayerPrefs.GetFloat("cal_shoulders", 0f);
             foreach (var id in PlayerPrefs.GetString("favorites", "").Split(','))
                 if (!string.IsNullOrEmpty(id)) favorites.Add(id);
         }
@@ -50,6 +57,9 @@ namespace Reachoreo
             PlayerPrefs.SetFloat("robot_volume", RobotVolume);
             PlayerPrefs.SetInt("sync_tolerance", (int)Tolerance);
             PlayerPrefs.SetInt("body_first_person_v2", ShowBodyFirstPerson ? 1 : 0);
+            PlayerPrefs.SetInt("calibrated", Calibrated ? 1 : 0);
+            PlayerPrefs.SetFloat("cal_height", Height); PlayerPrefs.SetFloat("cal_span", ArmSpan);
+            PlayerPrefs.SetFloat("cal_arm", ArmLength); PlayerPrefs.SetFloat("cal_shoulders", ShoulderWidth);
             PlayerPrefs.SetString("favorites", string.Join(",", favorites));
             PlayerPrefs.Save();
         }

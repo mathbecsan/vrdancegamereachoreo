@@ -268,24 +268,29 @@ namespace Reachoreo
         }
 
         // ---------- Sync score ----------
+        //
+        // Every frame we compare your arms with the coach's: the direction of each upper arm and forearm, in each
+        // body's own frame (so turning doesn't matter), allowing for the time it takes to follow someone (0 to
+        // 0.3 s behind the coach). Every count we judge it, and when the coach moves you must move too: standing
+        // still while the coach dances is a Miss. Counts where the coach just stands still are not rated.
+
+        public float LiveMatch { get; private set; }     // 0..1, smoothed: how close your arms are right now
+        public float LiveMove { get; private set; }      // 0..1: how much you move compared with the coach
+        public bool CoachResting { get; private set; }
+
+        struct ArmSample { public float t; public Vector3 a, b, c, d; public Vector3 wl, wr; }
+        readonly System.Collections.Generic.List<ArmSample> coachHist = new System.Collections.Generic.List<ArmSample>();
+        float beatMatchSum, beatPlayerMove, beatCoachMove; bool beatCoachPosed;
+        Vector3 prevPWl, prevPWr, prevCWl, prevCWr; bool havePrevP, havePrevC;
+        float lastScore;
 
         void ResetScore()
         {
             scoreSum = 0; judgedBeats = totalBeats = trackedBeats = 0;
             Perfect = GoodCount = Ok = Miss = Streak = BestStreak = 0;
-            beatScoreSum = 0; beatFrames = beatTrackedFrames = 0; lastBeat = -1;
-            LastJudgement = ""; LastJudgementAge = 99f;
-        }
-
-        void Score(float dt)
-        {
-            int beat = CountIndex(danceTime);
-            if (lastBeat < 0) lastBeat = beat;
-            if (beat != lastBeat) { JudgeBeat(); lastBeat = beat; }
-
-            beatFrames++;
-            if (!BodyTracked || coach == null || !coach.gameObject.activeInHierarchy) return;
-            if (TryFrameScore(out float s)) { beatTrackedFrames++; beatScoreSum += s; }
+            ResetBeat(); lastBeat = -1;
+            coachHist.Clear(); havePrevP = havePrevC = false;
+            LastJudgement = ""; LastJudgementAge = 99f; LiveMatch = 0f; LiveMove = 0f;
         }
 
         /// <summary>Which count of the dance a time falls in, using the song's tracked counts when it has them.</summary>
@@ -300,27 +305,72 @@ namespace Reachoreo
             return lo;
         }
 
+        void ResetBeat() { beatScoreSum = beatMatchSum = beatPlayerMove = beatCoachMove = 0; beatFrames = beatTrackedFrames = 0; beatCoachPosed = false; }
+
+        void Score(float dt)
+        {
+            int beat = CountIndex(danceTime);
+            if (lastBeat < 0) lastBeat = beat;
+            if (beat != lastBeat) { JudgeBeat(); lastBeat = beat; }
+            beatFrames++;
+            if (coach == null || !coach.gameObject.activeInHierarchy) return;
+
+            // The coach, every frame (kept for 0.5 s so we can match you against where it was a moment ago).
+            if (!CoachArms(out var cs)) return;
+            cs.t = danceTime;
+            coachHist.Add(cs);
+            while (coachHist.Count > 0 && coachHist[0].t < danceTime - 0.5f) coachHist.RemoveAt(0);
+            if (havePrevC) beatCoachMove += (cs.wl - prevCWl).magnitude + (cs.wr - prevCWr).magnitude;
+            prevCWl = cs.wl; prevCWr = cs.wr; havePrevC = true;
+            if (!ArmsDown(cs)) beatCoachPosed = true;
+
+            if (!BodyTracked || !PlayerArms(out var ps)) { havePrevP = false; return; }
+            if (havePrevP) beatPlayerMove += (ps.wl - prevPWl).magnitude + (ps.wr - prevPWr).magnitude;
+            prevPWl = ps.wl; prevPWr = ps.wr; havePrevP = true;
+
+            float best = 0f;
+            foreach (float lag in new[] { 0f, 0.1f, 0.2f, 0.3f })
+            {
+                var c = CoachAt(danceTime - lag);
+                float m = (Seg(ps.a, c.a) + Seg(ps.b, c.b) + Seg(ps.c, c.c) + Seg(ps.d, c.d)) / 4f;
+                if (m > best) best = m;
+            }
+            beatTrackedFrames++; beatMatchSum += best;
+            LiveMatch = Mathf.Lerp(LiveMatch, best, 0.15f);
+        }
+
         void JudgeBeat()
         {
             totalBeats++;
-            if (beatFrames == 0) return;
-            bool tracked = beatTrackedFrames >= beatFrames / 2;
-            if (tracked)
+            bool tracked = beatFrames > 0 && beatTrackedFrames >= beatFrames / 2;
+            // The coach is resting: arms down and hardly moving. Nothing to copy, so this count isn't rated.
+            CoachResting = !beatCoachPosed && beatCoachMove < 0.12f;
+            if (!tracked)
             {
-                trackedBeats++;
-                float s = beatScoreSum / Mathf.Max(1, beatTrackedFrames);
-                judgedBeats++; scoreSum += s;
-                Thresholds(out float perfect, out float good, out float ok);
-                if (s >= perfect) { Perfect++; Streak++; LastJudgement = "Perfect"; Buzz(0.5f, 0.08f); }
-                else if (s >= good) { GoodCount++; Streak++; LastJudgement = "Good"; }
-                else if (s >= ok) { Ok++; Streak = 0; LastJudgement = "OK"; }
-                else { Miss++; Streak = 0; LastJudgement = "Miss"; }
-                BestStreak = Mathf.Max(BestStreak, Streak);
+                LastJudgement = CoachResting ? "" : BodyTracked ? "" : "Not tracked";
+                LastJudgementAge = 0f; ResetBeat(); return;
             }
-            else LastJudgement = BodyTracked ? "" : "Not tracked";
+            trackedBeats++;
+            if (CoachResting) { LastJudgement = ""; ResetBeat(); return; }
+
+            float pose = beatMatchSum / beatTrackedFrames;
+            // Movement: if the coach moves, you have to move too (at least 60% as much, measured at the wrists).
+            float move = beatCoachMove > 0.12f ? Mathf.Clamp01(beatPlayerMove / (0.6f * beatCoachMove)) : 1f;
+            LiveMove = move;
+            float s = pose * (0.35f + 0.65f * move);
+            lastScore = s;
+            judgedBeats++; scoreSum += s;
+            Thresholds(out float perfect, out float good, out float ok);
+            if (s >= perfect) { Perfect++; Streak++; LastJudgement = "Perfect"; Buzz(0.5f, 0.08f); }
+            else if (s >= good) { GoodCount++; Streak++; LastJudgement = "Good"; }
+            else if (s >= ok) { Ok++; Streak = 0; LastJudgement = "OK"; }
+            else { Miss++; Streak = 0; LastJudgement = move < 0.3f ? "Miss: move with the coach" : "Miss"; }
+            BestStreak = Mathf.Max(BestStreak, Streak);
             LastJudgementAge = 0f;
-            beatScoreSum = 0; beatFrames = beatTrackedFrames = 0;
+            ResetBeat();
         }
+
+        public void BuzzBoth(float amplitude, float seconds) => Buzz(amplitude, seconds);
 
         /// <summary>A short controller vibration (nothing happens with hand tracking).</summary>
         void Buzz(float amplitude, float seconds)
@@ -333,52 +383,76 @@ namespace Reachoreo
         {
             switch (GameSession.Tolerance)
             {
-                case SyncTolerance.Relaxed: perfect = 0.86f; good = 0.74f; ok = 0.60f; break;
-                case SyncTolerance.Strict: perfect = 0.94f; good = 0.87f; ok = 0.75f; break;
-                default: perfect = 0.91f; good = 0.81f; ok = 0.67f; break;
+                case SyncTolerance.Relaxed: perfect = 0.75f; good = 0.55f; ok = 0.38f; break;
+                case SyncTolerance.Strict: perfect = 0.88f; good = 0.74f; ok = 0.55f; break;
+                default: perfect = 0.82f; good = 0.65f; ok = 0.45f; break;
             }
         }
 
-        bool TryFrameScore(out float score)
+        /// <summary>1 when two arm directions agree within ~20 degrees (Normal), 0 beyond ~70.</summary>
+        static float Seg(Vector3 you, Vector3 them)
         {
-            score = 0f;
-            Transform pSL = Bone("FullBody_LeftArmUpper"), pEL = Bone("FullBody_LeftArmLower"), pWL = Bone("FullBody_LeftHandWrist");
-            Transform pSR = Bone("FullBody_RightArmUpper"), pER = Bone("FullBody_RightArmLower"), pWR = Bone("FullBody_RightHandWrist");
-            if (pSL == null || pSR == null || pEL == null || pER == null || pWL == null || pWR == null) return false;
-            Transform cSL = coach.upperArmL, cEL = coach.lowerArmL, cSR = coach.upperArmR, cER = coach.lowerArmR;
-            Transform cWL = cEL.Find("Hand_L"), cWR = cER.Find("Hand_R");
-            if (cWL == null || cWR == null) return false;
+            float lo = 20f, hi = 70f;
+            if (GameSession.Tolerance == SyncTolerance.Relaxed) { lo = 28f; hi = 85f; }
+            else if (GameSession.Tolerance == SyncTolerance.Strict) { lo = 14f; hi = 55f; }
+            float ang = Vector3.Angle(you, them);
+            return Mathf.Clamp01((hi - ang) / (hi - lo));
+        }
 
-            Frame(pSL.position, pSR.position, out var pr, out var pf);
-            Frame(cSL.position, cSR.position, out var cr, out var cf);
-            bool mirror = coach.facing == DanceCoach.Facing.FacingYou;
+        static bool ArmsDown(ArmSample c) => Vector3.Dot(c.a, Vector3.down) > 0.85f && Vector3.Dot(c.c, Vector3.down) > 0.85f
+                                              && Vector3.Dot(c.b, Vector3.down) > 0.75f && Vector3.Dot(c.d, Vector3.down) > 0.75f;
 
-            // Your left arm vs. their left (or, facing you, their right with left/right flipped).
-            float s = 0f;
-            s += Match(Local(pEL.position - pSL.position, pr, pf), Local(mirror ? cER.position - cSR.position : cEL.position - cSL.position, cr, cf), mirror);
-            s += Match(Local(pWL.position - pEL.position, pr, pf), Local(mirror ? cWR.position - cER.position : cWL.position - cEL.position, cr, cf), mirror);
-            s += Match(Local(pER.position - pSR.position, pr, pf), Local(mirror ? cEL.position - cSL.position : cER.position - cSR.position, cr, cf), mirror);
-            s += Match(Local(pWR.position - pER.position, pr, pf), Local(mirror ? cWL.position - cEL.position : cWR.position - cER.position, cr, cf), mirror);
-            score = s / 4f;
+        ArmSample CoachAt(float t)
+        {
+            if (coachHist.Count == 0) return default;
+            var best = coachHist[coachHist.Count - 1];
+            foreach (var c in coachHist) if (Mathf.Abs(c.t - t) < Mathf.Abs(best.t - t)) best = c;
+            return best;
+        }
+
+        /// <summary>Your arms in your body's frame: a/b = left upper arm/forearm, c/d = right; wrists in arm lengths.</summary>
+        bool PlayerArms(out ArmSample s)
+        {
+            s = default;
+            Transform sl = Bone("FullBody_LeftArmUpper"), el = Bone("FullBody_LeftArmLower"), wl = Bone("FullBody_LeftHandWrist");
+            Transform sr = Bone("FullBody_RightArmUpper"), er = Bone("FullBody_RightArmLower"), wr = Bone("FullBody_RightHandWrist");
+            if (sl == null || el == null || wl == null || sr == null || er == null || wr == null) return false;
+            return Arms(sl.position, el.position, wl.position, sr.position, er.position, wr.position, false, out s);
+        }
+
+        /// <summary>The coach's arms in its own frame, as the arms you should copy: facing you it is your mirror
+        /// image, so its right arm is what your left arm should do (with left and right flipped).</summary>
+        bool CoachArms(out ArmSample s)
+        {
+            s = default;
+            Transform sl = coach.upperArmL, el = coach.lowerArmL, sr = coach.upperArmR, er = coach.lowerArmR;
+            Transform wl = el != null ? el.Find("Hand_L") : null, wr = er != null ? er.Find("Hand_R") : null;
+            if (sl == null || el == null || wl == null || sr == null || er == null || wr == null) return false;
+            return Arms(sl.position, el.position, wl.position, sr.position, er.position, wr.position, coach.facing == DanceCoach.Facing.FacingYou, out s);
+        }
+
+        /// <summary>Arm directions in the body's own frame (x = its right, y = up, z = its front), wrists relative
+        /// to the chest in arm lengths. Mirrored: sides swapped and x flipped, as seen in a mirror.</summary>
+        static bool Arms(Vector3 sl, Vector3 el, Vector3 wl, Vector3 sr, Vector3 er, Vector3 wr, bool mirror, out ArmSample s)
+        {
+            s = default;
+            Vector3 right = Vector3.ProjectOnPlane(sr - sl, Vector3.up);
+            if (right.sqrMagnitude < 1e-6f) return false;
+            right.Normalize();
+            Vector3 fwd = Vector3.Cross(right, Vector3.up);
+            Vector3 L(Vector3 d) => new Vector3(Vector3.Dot(d, right), Vector3.Dot(d, Vector3.up), Vector3.Dot(d, fwd));
+            Vector3 F(Vector3 v) => new Vector3(-v.x, v.y, v.z);
+            float arm = GameSession.ArmLength > 0.3f ? GameSession.ArmLength
+                      : Mathf.Max(0.3f, ((el - sl).magnitude + (wl - el).magnitude + (er - sr).magnitude + (wr - er).magnitude) / 2f);
+            Vector3 chest = (sl + sr) * 0.5f;
+            Vector3 A = L(el - sl).normalized, B = L(wl - el).normalized, C = L(er - sr).normalized, D = L(wr - er).normalized;
+            Vector3 WL = L(wl - chest) / arm, WR = L(wr - chest) / arm;
+            s = mirror ? new ArmSample { a = F(C), b = F(D), c = F(A), d = F(B), wl = F(WR), wr = F(WL) }
+                       : new ArmSample { a = A, b = B, c = C, d = D, wl = WL, wr = WR };
             return true;
         }
 
-        static void Frame(Vector3 leftShoulder, Vector3 rightShoulder, out Vector3 right, out Vector3 forward)
-        {
-            right = Vector3.ProjectOnPlane(rightShoulder - leftShoulder, Vector3.up).normalized;
-            forward = Vector3.Cross(right, Vector3.up);
-        }
-
-        static Vector3 Local(Vector3 d, Vector3 right, Vector3 forward) =>
-            new Vector3(Vector3.Dot(d, right), Vector3.Dot(d, Vector3.up), Vector3.Dot(d, forward)).normalized;
-
-        static float Match(Vector3 you, Vector3 them, bool mirror)
-        {
-            if (mirror) them.x = -them.x;
-            return (Vector3.Dot(you, them) + 1f) * 0.5f;
-        }
-
-        Transform Bone(string id)
+        public Transform Bone(string id)
         {
             if (body == null || body.Bones == null) return null;
             var want = (OVRSkeleton.BoneId)Enum.Parse(typeof(OVRSkeleton.BoneId), id);

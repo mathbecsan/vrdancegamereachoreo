@@ -52,7 +52,7 @@ namespace Reachoreo
 
         // HUD
         TextMeshProUGUI hudPhrase, hudTime, hudBig, hudSmall;
-        RectTransform hudFill, hudPlayRow, hudPauseRow;
+        RectTransform hudFill, hudPlayRow, hudPauseRow, hudMeter; Image hudMeterImg;
         Button hudEnd;
 
         void Awake()
@@ -81,6 +81,7 @@ namespace Reachoreo
                 if (resume == "config") history.Push("songs");
                 Show(resume);
             }
+            else if (!GameSession.Calibrated) { history.Push("main"); StartCalibration("main"); }
             else Show("main");
         }
 
@@ -130,6 +131,7 @@ namespace Reachoreo
                 if (liveTimer > 0.25f) { liveTimer = 0f; Refresh(); }
             }
             if (hud != null && hud.gameObject.activeSelf) UpdateHud();
+            if (current == "calibrate" && menu.gameObject.activeSelf) CalibrationTick(Time.unscaledDeltaTime);
         }
 
         // ================= Menu panel =================
@@ -153,7 +155,7 @@ namespace Reachoreo
             UiKit.Spacer(nav);
             navContinue = UiKit.Button(nav, "Continue", () => { var s = screens[current]; s.onContinue?.Invoke(); }, UiKit.Style.Primary, 260);
 
-            BuildMain(); BuildSongs(); BuildConfig(); BuildPre(); BuildHowTo(); BuildSettings(); BuildSummary(); BuildPlaces();
+            BuildMain(); BuildSongs(); BuildConfig(); BuildPre(); BuildHowTo(); BuildSettings(); BuildSummary(); BuildPlaces(); BuildCalibration();
             BuildExitConfirm();
         }
 
@@ -184,7 +186,7 @@ namespace Reachoreo
             UiKit.Size(UiKit.Text(left, "Follow the coach in front of you, watch yourself in the mirror, and keep in sync with the robots beside you.", 21, UiKit.Mute), h: 80);
 
             var buttons = UiKit.VStack(row, "Buttons", 14, 10, TextAnchor.MiddleCenter); UiKit.Size(buttons, flexW: 1, flexH: 1);
-            UiKit.Button(buttons, "Start dancing", () => Go("songs"), UiKit.Style.Primary, -1, 84, 30);
+            UiKit.Button(buttons, "Start dancing", () => { if (GameSession.Calibrated) Go("songs"); else { history.Push("main"); StartCalibration("songs"); } }, UiKit.Style.Primary, -1, 84, 30);
             UiKit.Button(buttons, "Free dance", StartFreeDance, UiKit.Style.Secondary, -1, 64, 26);
             UiKit.Button(buttons, "Places", () => Go("places"), UiKit.Style.Secondary, -1, 64, 26);
             UiKit.Button(buttons, "How to play", () => Go("howto"), UiKit.Style.Secondary, -1, 64, 26);
@@ -424,7 +426,7 @@ namespace Reachoreo
             Tip(grid, "Stay on your mark", "Stand on the orange cross with about 2 x 2 m of clear space. During a dance you never move artificially.");
             Tip(grid, "Follow the coach", "Copy the coral coach in front of you. \"Back to you\": copy directly. \"Facing you\": they are your mirror image. A on the right controller switches.");
             Tip(grid, "See yourself", "Your tracked body is the blue-teal figure in the mirror. Reachy A dances on your left, Reachy B on your right.");
-            Tip(grid, "Your score", "On every beat your arms are compared with the coach's: Perfect, Good, OK or Miss. Keep a streak going.");
+            Tip(grid, "Your score", "Every count, your upper arms and forearms are compared with the coach's (a short delay is fine), and you must move when the coach moves. Standing still is a Miss. When the coach rests, nothing is rated.");
             Tip(grid, "Pause anytime", "The small panel at your waist shows the time and your rating. Press Pause to resume, restart or quit.");
         }
 
@@ -449,6 +451,10 @@ namespace Reachoreo
             Choice(s, c1, "Sync tolerance", new[] { "Relaxed", "Normal", "Strict" }, () => (int)GameSession.Tolerance, v => { GameSession.Tolerance = (SyncTolerance)v; GameSession.Save(); }, 200);
             Choice(s, c1, "Coach view", new[] { "Back to you", "Facing you" }, () => director.coach != null && director.coach.facing == DanceCoach.Facing.FacingYou ? 1 : 0,
                    v => { if (director.coach != null) director.coach.SetFacing(v == 1 ? DanceCoach.Facing.FacingYou : DanceCoach.Facing.BackToYou); }, 200);
+            Heading(c1, "Body");
+            var calRow = UiKit.Row(c1, "Calibration", 150);
+            var calBtn = UiKit.Button(calRow, "Calibrate again", () => { history.Push(current); StartCalibration("settings"); }, UiKit.Style.Secondary, -1, 48, 19);
+            s.refresh.Add(() => UiKit.SetLabel(calBtn, GameSession.Calibrated ? $"Calibrate again ({GameSession.Height:0.00} m)" : "Calibrate now"));
             Heading(c1, "Visuals");
             Toggle(s, c1, "My body when I look down", () => GameSession.ShowBodyFirstPerson, v => { GameSession.ShowBodyFirstPerson = v; GameSession.Save(); director.ApplySettings(); });
 
@@ -458,6 +464,127 @@ namespace Reachoreo
                 "Reachoreo VR, early build.\n\n" +
                 "Reachy Mini 3D model and rig by Clement Plays, published by Pollen Robotics (Apache-2.0).\n\n" +
                 "Coach, avatar and rooms: made for Reachoreo.\n\n" + MusicCredits(), 17, UiKit.Ink), h: 330);
+        }
+
+        // ---------- Calibration (required before dancing) ----------
+        int calStep; float calHold, calNoTrack; string calThen = "main";
+        float calHeight, calShoulders, calSpan;
+        TextMeshProUGUI calTitle, calText, calStatus, calSteps; Image calDot; RectTransform calBar; Button calSkip;
+
+        void StartCalibration(string then) { calThen = then; calStep = 0; calHold = 0; calNoTrack = 0; Show("calibrate"); }
+
+        void BuildCalibration()
+        {
+            var s = NewScreen("calibrate", "Set up your body");
+            s.home = false; s.settings = false;
+            s.continueLabel = "Continue"; s.canContinue = () => calStep == 0 || calStep == 3;
+            s.onContinue = () => { if (calStep == 0) { calStep = 1; calHold = 0; } else if (calStep == 3) FinishCalibration(); Refresh(); };
+            var col = UiKit.Panel(s.root, "Calibration", UiKit.CardDim, 28, 14); UiKit.Stretch(col);
+            calSteps = UiKit.Text(col, "", 18, UiKit.Mute, true); UiKit.Size(calSteps, h: 26);
+            calTitle = UiKit.Text(col, "", 34, UiKit.Ink, true); UiKit.Size(calTitle, h: 46);
+            calText = UiKit.Text(col, "", 22, UiKit.Ink); UiKit.Size(calText, h: 190);
+            var row = UiKit.HStack(col, "Status", 12); UiKit.Size(row, h: 40);
+            calDot = UiKit.Dot(row, UiKit.Warn, 20);
+            calStatus = UiKit.Text(row, "", 20, UiKit.Ink, false, TextAlignmentOptions.MidlineLeft); UiKit.Size(calStatus, flexW: 1, h: 40);
+            var track = UiKit.Box(col, "Hold"); UiKit.Size(track, h: 14); UiKit.Fill(track, UiKit.Card);
+            calBar = UiKit.Box(track, "Fill"); calBar.anchorMin = Vector2.zero; calBar.anchorMax = new Vector2(0, 1); calBar.offsetMin = calBar.offsetMax = Vector2.zero;
+            UiKit.Fill(calBar, UiKit.Teal);
+            UiKit.Spacer(col, true);
+            calSkip = UiKit.Button(col, "Continue without calibration (scores less accurate)", () => { GameSession.Calibrated = false; Leave(); }, UiKit.Style.Quiet, -1, 52, 18);
+            s.refresh.Add(RefreshCalibration);
+        }
+
+        void RefreshCalibration()
+        {
+            if (calTitle == null) return;
+            calSteps.text = $"STEP {calStep + 1} OF 4";
+            calBar.parent.gameObject.SetActive(calStep == 1 || calStep == 2);
+            calBar.anchorMax = new Vector2(Mathf.Clamp01(calHold / (calStep == 1 ? 2f : 1.5f)), 1);
+            calSkip.gameObject.SetActive(calStep > 0 && calNoTrack > 15f);
+            switch (calStep)
+            {
+                case 0:
+                    calTitle.text = "Hands or controllers";
+                    calText.text = "You can play with your hands or with the Touch controllers, and switch any time.\n\n" +
+                                   "<b>To use the controllers:</b> press the Meta button (the round one) on each controller until it lights up. " +
+                                   "The game switches to them as soon as you pick them up: point the ray at a button and pull the trigger.\n" +
+                                   "If they don't wake up: check the AA batteries, or pair them in the Meta Horizon app (Devices > your headset > Controllers).";
+                    var mode = UnityEngine.XR.Interaction.Toolkit.Inputs.XRInputModalityManager.currentInputMode.Value;
+                    bool hands = mode == UnityEngine.XR.Interaction.Toolkit.Inputs.XRInputModalityManager.InputMode.TrackedHand;
+                    bool ctrl = mode == UnityEngine.XR.Interaction.Toolkit.Inputs.XRInputModalityManager.InputMode.MotionController;
+                    calDot.color = hands || ctrl ? UiKit.Good : UiKit.Warn;
+                    calStatus.text = ctrl ? "Using: Touch controllers" : hands ? "Using: your hands (pick up a controller to switch)" : "No hands or controllers seen yet";
+                    break;
+                case 1:
+                    calTitle.text = "Stand still";
+                    calText.text = "Stand on the orange cross, facing the mirror. Stand tall, arms relaxed at your sides, and hold still for 2 seconds.\nThis measures your height and shoulders.";
+                    break;
+                case 2:
+                    calTitle.text = "Make a T";
+                    calText.text = "Stretch both arms straight out to the sides, level with your shoulders, palms down. Hold for 1.5 seconds.\nThis measures your arm span, so the score fits your body.";
+                    break;
+                default:
+                    calTitle.text = "All set";
+                    calText.text = $"Height: about {calHeight:0.00} m\nArm span: {calSpan:0.00} m\nArm length: {Mathf.Max(0.3f, (calSpan - calShoulders) / 2f):0.00} m\n\nYou can redo this any time in Settings.";
+                    calDot.color = UiKit.Good; calStatus.text = "Calibrated";
+                    break;
+            }
+        }
+
+        void CalibrationTick(float dt)
+        {
+            if (calStep == 0 || calStep == 3) { liveTimer += 0f; if (Time.frameCount % 15 == 0) RefreshCalibration(); return; }
+            if (!director.BodyTracked)
+            {
+                calNoTrack += dt; calHold = 0;
+                calDot.color = UiKit.Warn; calStatus.text = "Body tracking: " + director.TrackingStatus;
+                RefreshCalibration(); return;
+            }
+            calNoTrack = 0;
+            Transform head = director.Bone("FullBody_Head"), sl = director.Bone("FullBody_LeftArmUpper"), sr = director.Bone("FullBody_RightArmUpper");
+            Transform el = director.Bone("FullBody_LeftArmLower"), er = director.Bone("FullBody_RightArmLower");
+            Transform wl = director.Bone("FullBody_LeftHandWrist"), wr = director.Bone("FullBody_RightHandWrist");
+            Transform pl = director.Bone("FullBody_LeftHandPalm"), pr = director.Bone("FullBody_RightHandPalm");
+            if (head == null || sl == null || sr == null || el == null || er == null || wl == null || wr == null) return;
+            Vector3 ual = (el.position - sl.position).normalized, uar = (er.position - sr.position).normalized;
+            Vector3 fal = (wl.position - el.position).normalized, far = (wr.position - er.position).normalized;
+            bool ok;
+            if (calStep == 1)
+            {
+                ok = Vector3.Dot(ual, Vector3.down) > 0.8f && Vector3.Dot(uar, Vector3.down) > 0.8f;
+                calStatus.text = ok ? "Hold still..." : "Let your arms hang at your sides";
+                if (ok) { calHeight = Mathf.Lerp(calHeight > 0 ? calHeight : head.position.y + 0.11f, head.position.y + 0.11f, 0.1f); calShoulders = (sr.position - sl.position).magnitude; }
+            }
+            else
+            {
+                bool level = Mathf.Abs(ual.y) < 0.35f && Mathf.Abs(uar.y) < 0.35f;
+                bool straight = Vector3.Dot(ual, fal) > 0.85f && Vector3.Dot(uar, far) > 0.85f;
+                bool apart = Vector3.Dot(ual, uar) < -0.6f;
+                ok = level && straight && apart;
+                calStatus.text = ok ? "Hold it..." : !apart || !level ? "Arms straight out to the sides, at shoulder height" : "Straighten your elbows";
+                if (ok) calSpan = ((pl != null ? pl.position : wl.position) - (pr != null ? pr.position : wr.position)).magnitude + (pl != null ? 0.12f : 0.2f);
+            }
+            calDot.color = ok ? UiKit.Good : UiKit.Warn;
+            calHold = ok ? calHold + dt : 0f;
+            if (calHold >= (calStep == 1 ? 2f : 1.5f)) { calStep++; calHold = 0; director.BuzzBoth(0.4f, 0.1f); }
+            RefreshCalibration();
+            navContinue.interactable = calStep == 0 || calStep == 3;
+        }
+
+        void FinishCalibration()
+        {
+            GameSession.Calibrated = true;
+            GameSession.Height = calHeight; GameSession.ShoulderWidth = calShoulders; GameSession.ArmSpan = calSpan;
+            GameSession.ArmLength = Mathf.Max(0.3f, (calSpan - calShoulders) / 2f);
+            GameSession.Save();
+            Leave();
+        }
+
+        void Leave()
+        {
+            if (calThen == "songs") Go("songs");
+            else if (calThen == "settings") Back();
+            else { history.Clear(); Show("main"); }
         }
 
         // ---------- Places ----------
@@ -546,6 +673,11 @@ namespace Reachoreo
             var mid = UiKit.HStack(col, "Mid", 10); UiKit.Size(mid, h: 80);
             hudBig = UiKit.Text(mid, "", 52, UiKit.Ink, true, TextAlignmentOptions.MidlineLeft); UiKit.Size(hudBig, flexW: 1, h: 80);
             hudSmall = UiKit.Text(mid, "", 20, UiKit.Mute, false, TextAlignmentOptions.MidlineRight); UiKit.Size(hudSmall, 200, 80);
+            var meter = UiKit.HStack(col, "Meter", 10); UiKit.Size(meter, h: 18);
+            UiKit.Size(UiKit.Text(meter, "ARM MATCH", 14, UiKit.Mute, true, TextAlignmentOptions.MidlineLeft), 110, 18);
+            var mtrack = UiKit.Box(meter, "Track"); UiKit.Size(mtrack, flexW: 1, h: 10); UiKit.Fill(mtrack, UiKit.CardDim);
+            hudMeter = UiKit.Box(mtrack, "Fill"); hudMeter.anchorMin = Vector2.zero; hudMeter.anchorMax = new Vector2(0, 1); hudMeter.offsetMin = hudMeter.offsetMax = Vector2.zero;
+            hudMeterImg = UiKit.Fill(hudMeter, UiKit.Teal);
 
             hudPlayRow = UiKit.HStack(col, "Play Row", 10); UiKit.Size(hudPlayRow, h: 60);
             UiKit.Button(hudPlayRow, "Pause", () => { director.Pause(); }, UiKit.Style.Secondary, 180, 56);
@@ -615,10 +747,12 @@ namespace Reachoreo
                 hudBig.text = n.ToString(); hudBig.color = UiKit.Coral; hudSmall.text = "Get ready";
                 return;
             }
+            hudMeter.anchorMax = new Vector2(director.BodyTracked ? director.LiveMatch : 0f, 1);
+            hudMeterImg.color = director.LiveMatch > 0.75f ? UiKit.Coral : UiKit.Teal;
             string j = director.LastJudgementAge < 0.6f ? director.LastJudgement : "";
-            hudBig.text = j;
+            hudBig.text = j; hudBig.fontSize = j.Length > 10 ? 34 : 52;
             hudBig.color = j == "Perfect" ? UiKit.Coral : j == "Good" ? UiKit.Teal : j == "Miss" || j == "Not tracked" ? UiKit.Faint : UiKit.Ink;
-            hudSmall.text = director.Streak >= 3 ? $"Streak {director.Streak}" : "";
+            hudSmall.text = director.CoachResting ? "Rest, get ready" : director.Streak >= 3 ? $"Streak {director.Streak}" : "";
         }
 
         // ================= Helpers =================
