@@ -3,14 +3,18 @@ using UnityEngine;
 namespace Reachoreo
 {
     /// <summary>
-    /// The shared layout every place uses: where you dance, where the mirror is, and where the
-    /// two Reachy Minis stand. Put one PlaceRig in each place scene and move its children to fit
-    /// the real spot. The rig's own position is the dance mark; you face its +Z (toward the mirror).
+    /// The shared layout every place uses: where you dance, where the dance coach stands, where the
+    /// mirror is, and where the two Reachy Minis stand. Put one PlaceRig in each place scene and move
+    /// its children to fit the real spot. The rig's own position is the dance mark; you face its +Z
+    /// (toward the coach and the mirror).
     /// </summary>
     public class PlaceRig : MonoBehaviour
     {
         [Tooltip("Where the player stands. Usually this object itself.")]
         public Transform danceMark;
+
+        [Tooltip("Where the dance coach stands, in front of the player.")]
+        public Transform coach;
 
         [Tooltip("Center of the mirror surface, in front of the player. Its +Z points away from the player.")]
         public Transform mirror;
@@ -36,6 +40,9 @@ namespace Reachoreo
             Gizmos.color = new Color(1f, 0.6f, 0.1f, 0.9f);
             if (reachyA != null) Gizmos.DrawWireCube(reachyA.position + Vector3.up * 0.14f, new Vector3(0.16f, 0.28f, 0.16f));
             if (reachyB != null) Gizmos.DrawWireCube(reachyB.position + Vector3.up * 0.14f, new Vector3(0.16f, 0.28f, 0.16f));
+
+            Gizmos.color = new Color(0.95f, 0.45f, 0.35f, 0.9f);
+            if (coach != null) Gizmos.DrawWireCube(coach.position + Vector3.up * 0.9f, new Vector3(0.5f, 1.8f, 0.3f));
         }
     }
 }

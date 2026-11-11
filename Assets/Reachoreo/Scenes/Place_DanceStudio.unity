@@ -5243,7 +5243,7 @@ Transform:
   m_GameObject: {fileID: 959079584}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1.3, y: 0.25, z: 0.8}
+  m_LocalPosition: {x: 1.2, y: 0.25, z: 0.3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -7244,7 +7244,7 @@ Transform:
   m_GameObject: {fileID: 1316331483}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1.3, y: 0.25, z: 0.8}
+  m_LocalPosition: {x: -1.2, y: 0.25, z: 0.3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -11169,9 +11169,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f6ce792b19bc4754aa4ec8acd059de0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  estimate: 'ESTIMATE: dance mark centered, 3.0 m from the mirror. Reachys 1.3 m
-    to each side, 0.8 m ahead of you, on 0.5 m plinths, facing the mirror like dancers
-    in a class.'
+  estimate: 'ESTIMATE / DESIGN: you stand centered, 3.0 m from the mirror. The coach
+    is 1.8 m ahead of you (1.2 m from the mirror), facing the mirror by default.
+    Reachys 1.2 m to each side, 0.3 m ahead, on 0.5 m plinths, facing the mirror
+    like dancers in a class.'
   measured: 0
 --- !u!114 &4920619246528775131
 MonoBehaviour:
