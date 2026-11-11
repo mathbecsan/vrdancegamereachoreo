@@ -1,0 +1,9 @@
+reachy_mini.glb is derived from the Reachy Mini Blender model:
+  https://github.com/pollen-robotics/reachy_mini_blender (commit bfa02cf, 2026-08-04)
+  3D model and rig by Clement Plays (https://clementplays.artstation.com/), published by Pollen Robotics
+  Licensed under the Apache License, Version 2.0 (LICENSE-Apache-2.0.txt in this folder).
+
+Changes (reachy-dance repo, xr/tools/build_reachy_glb.py): procedural materials baked to flat colors stored as
+vertex colors; parts merged per bone; head, body, base and antenna meshes decimated (about 850k -> 51k triangles);
+the Stewart-platform rod meshes left out (Reachoreo draws six simple rods); antenna rods made rigid.
+For Unity: re-packed with gltfpack 1.3.0 (-kn -noq) without meshopt compression, so glTFast can import it.
