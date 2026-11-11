@@ -18,6 +18,7 @@ namespace Reachoreo
         public bool loop = true;
         [Tooltip("1 = real speed, 0.5 = half speed for practice.")]
         public float speed = 1f;
+        // (When a PerformanceDirector is in the scene, it chooses the mode: idle in menus, loops for previews.)
 
         [Header("Calibration (pose.py DEFAULT, same as the real robots)")]
         public float yawDeg = 40, bodyDeg = 30, pitchDeg = 25, zMmPerPx = 0.5f;
@@ -25,12 +26,31 @@ namespace Reachoreo
         public bool antSwap;
         public float maxPitchRollDeg = 35, maxBodyDeg = 155, maxHeadBodyDeltaDeg = 60, maxAntennaRad = 1.45f, maxZmm = 12;
 
+        /// <summary>Idle: the Reachys breathe and look around. Loop: play a stretch of the score on repeat
+        /// (previews, free dance). Driven: the game's dance clock sets the time (performances).</summary>
+        public enum Mode { Idle, Loop, Driven }
+        public Mode mode = Mode.Idle;
+
+        [Tooltip("Both Reachys dance Reachy A's part, in sync.")]
+        public bool bothDanceA;
+
         float step = 0.05f;
         float[][] framesA, framesB;   // per frame: yaw, pitch, roll, body, turn, antL, antR, bob
-        float t;
+        float t, loopStart, loopEnd = -1f, idleTime;
 
         public float Duration => framesA == null ? 0f : (framesA.Length - 1) * step;
         public float Time01 => Duration > 0f ? t / Duration : 0f;
+        public float CurrentTime => t;
+
+        public void Idle() { mode = Mode.Idle; }
+        public void PlayLoop(float start, float end) { mode = Mode.Loop; loopStart = start; loopEnd = end; t = start; }
+        public void Drive(float time) { mode = Mode.Driven; t = Mathf.Clamp(time, 0f, Duration); Apply(); }
+
+        public void SetEnabled(bool left, bool right)
+        {
+            if (reachyA != null) reachyA.gameObject.SetActive(left);
+            if (reachyB != null) reachyB.gameObject.SetActive(right);
+        }
 
         void Awake()
         {
@@ -48,13 +68,43 @@ namespace Reachoreo
         void Update()
         {
             if (framesA == null) return;
+            if (mode == Mode.Idle) { idleTime += Time.deltaTime; ApplyIdle(); return; }
+            if (mode == Mode.Driven) return;   // the dance clock calls Drive()
             t += Time.deltaTime * speed;
-            if (t > Duration) t = loop ? t % Duration : Duration;
-            if (reachyA != null) reachyA.SetPose(ToSdk(Sample(framesA, t)));
-            if (reachyB != null) reachyB.SetPose(ToSdk(Sample(framesB, t)));
+            float end = loopEnd > loopStart ? loopEnd : Duration;
+            if (t > end) t = loop ? loopStart + (t - end) % Mathf.Max(0.01f, end - loopStart) : end;
+            Apply();
         }
 
-        public void Restart() { t = 0f; }
+        void Apply()
+        {
+            if (reachyA != null && reachyA.isActiveAndEnabled) reachyA.SetPose(ToSdk(Sample(framesA, t)));
+            if (reachyB != null && reachyB.isActiveAndEnabled) reachyB.SetPose(ToSdk(Sample(bothDanceA ? framesA : framesB, t)));
+        }
+
+        /// <summary>A calm "alive" pose for menus: slow breathing, a look around, antennas swaying.</summary>
+        void ApplyIdle()
+        {
+            for (int k = 0; k < 2; k++)
+            {
+                var r = k == 0 ? reachyA : reachyB;
+                if (r == null || !r.isActiveAndEnabled) continue;
+                float p = idleTime + k * 1.7f;
+                var c = new SdkCommand
+                {
+                    headPitchDeg = 4f * Mathf.Sin(p * 0.9f),
+                    headRollDeg = 3f * Mathf.Sin(p * 0.55f),
+                    headYawDeg = 14f * Mathf.Sin(p * 0.23f) * (k == 0 ? 1f : -1f),
+                    headZmm = 2f * Mathf.Sin(p * 1.6f),
+                    bodyYawRad = 0.12f * Mathf.Sin(p * 0.17f),
+                    antennaRightRad = 0.35f + 0.18f * Mathf.Sin(p * 1.3f),
+                    antennaLeftRad = -(0.35f + 0.18f * Mathf.Sin(p * 1.3f + 0.6f)),
+                };
+                r.SetPose(c);
+            }
+        }
+
+        public void Restart() { t = loopStart; }
 
         float[] Sample(float[][] f, float time)
         {

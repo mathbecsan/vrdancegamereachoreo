@@ -641,6 +641,8 @@ MonoBehaviour:
   maxHeadBodyDeltaDeg: 60
   maxAntennaRad: 1.45
   maxZmm: 12
+  mode: 0
+  bothDanceA: 0
 --- !u!1 &699889359013949845
 GameObject:
   m_ObjectHideFlags: 0
@@ -662,7 +664,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &5435758893021756546
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2213,6 +2215,7 @@ Transform:
   - {fileID: 5435758893021756546}
   - {fileID: 3161168828599805418}
   - {fileID: 3364653552934377344}
+  - {fileID: 4451158063637810899}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &4134601942452999593
@@ -2285,6 +2288,79 @@ Transform:
   - {fileID: 7917807331511008480}
   m_Father: {fileID: 3470270280406945606}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &4901721991893739598
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4451158063637810899}
+  - component: {fileID: 116844139624746181}
+  - component: {fileID: 3187382178224685494}
+  m_Layer: 0
+  m_Name: Game
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4451158063637810899
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4901721991893739598}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3470270280406945606}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &116844139624746181
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4901721991893739598}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fa999470e0524aef8406e019034a18f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Reachoreo.PerformanceDirector
+  robots: {fileID: 0}
+  coach: {fileID: 0}
+  body: {fileID: 0}
+  avatar: {fileID: 0}
+  Perfect: 0
+  GoodCount: 0
+  Ok: 0
+  Miss: 0
+  Streak: 0
+  BestStreak: 0
+  LastJudgement: 
+  LastJudgementAge: 99
+--- !u!114 &3187382178224685494
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4901721991893739598}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b953bf4e673d4dc792ddd73b19a9896, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Reachoreo.MenuFlow
+  director: {fileID: 116844139624746181}
+  menuPosition: {x: 0, y: 1.32, z: 1.05}
+  hudPosition: {x: 0, y: 0.92, z: 0.72}
+  hudTilt: 35
 --- !u!1 &5104972277194031590
 GameObject:
   m_ObjectHideFlags: 0
