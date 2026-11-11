@@ -15,6 +15,7 @@ namespace Reachoreo
         public static DanceInfo Song;
         public static int Section;               // index into Song.sections
         public static string PlaceId = "studio";
+        public static string ResumeScreen;       // after travelling to another place, the menu opens here
         public static bool LeftReachy = true;
         public static bool RightReachy = true;
         public static bool ReachysInSync;        // both dance Reachy A's part
@@ -26,7 +27,7 @@ namespace Reachoreo
         public static float MusicVolume = 0.8f;
         public static float RobotVolume = 0.6f;
         public static SyncTolerance Tolerance = SyncTolerance.Normal;
-        public static bool ShowBodyFirstPerson;
+        public static bool ShowBodyFirstPerson = true;
 
         static readonly HashSet<string> favorites = new HashSet<string>();
         static bool loaded;
@@ -38,7 +39,7 @@ namespace Reachoreo
             MusicVolume = PlayerPrefs.GetFloat("music_volume", MusicVolume);
             RobotVolume = PlayerPrefs.GetFloat("robot_volume", RobotVolume);
             Tolerance = (SyncTolerance)PlayerPrefs.GetInt("sync_tolerance", (int)Tolerance);
-            ShowBodyFirstPerson = PlayerPrefs.GetInt("body_first_person", 0) == 1;
+            ShowBodyFirstPerson = PlayerPrefs.GetInt("body_first_person_v2", 1) == 1;
             foreach (var id in PlayerPrefs.GetString("favorites", "").Split(','))
                 if (!string.IsNullOrEmpty(id)) favorites.Add(id);
         }
@@ -48,7 +49,7 @@ namespace Reachoreo
             PlayerPrefs.SetFloat("music_volume", MusicVolume);
             PlayerPrefs.SetFloat("robot_volume", RobotVolume);
             PlayerPrefs.SetInt("sync_tolerance", (int)Tolerance);
-            PlayerPrefs.SetInt("body_first_person", ShowBodyFirstPerson ? 1 : 0);
+            PlayerPrefs.SetInt("body_first_person_v2", ShowBodyFirstPerson ? 1 : 0);
             PlayerPrefs.SetString("favorites", string.Join(",", favorites));
             PlayerPrefs.Save();
         }

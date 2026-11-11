@@ -42,6 +42,21 @@ namespace Reachoreo
         public float DanceTime => danceTime;
         public float Progress01 => section == null ? 0f : Mathf.Clamp01((danceTime - section.start) / Mathf.Max(0.01f, section.end - section.start));
         public bool BodyTracked => body != null && body.IsInitialized && body.IsDataValid;
+
+        /// <summary>Plain-language body tracking status for the ready check (and the headset log).</summary>
+        public string TrackingStatus
+        {
+            get
+            {
+                if (body == null) return "not set up in this place";
+                var ovrBody = body.GetComponent<OVRBody>();
+                if (ovrBody != null && !ovrBody.enabled) return "could not start (allow body tracking in the headset's settings)";
+                if (!body.IsInitialized) return "starting...";
+                if (!body.IsDataValid) return "waiting to see you: stand on the cross, arms in view";
+                return "tracking you";
+            }
+        }
+        string lastStatus; float statusTimer;
         public bool PlayingRealSong => music.clip != null && music.isPlaying;
         public event Action Finished;
 
@@ -214,6 +229,8 @@ namespace Reachoreo
         void Update()
         {
             float dt = Time.deltaTime;
+            statusTimer += Time.unscaledDeltaTime;
+            if (statusTimer > 3f) { statusTimer = 0f; var st = TrackingStatus; if (st != lastStatus) { lastStatus = st; Debug.Log("Reachoreo: body tracking " + st); } }
             switch (state)
             {
                 case State.Preview:
@@ -294,7 +311,7 @@ namespace Reachoreo
                 float s = beatScoreSum / Mathf.Max(1, beatTrackedFrames);
                 judgedBeats++; scoreSum += s;
                 Thresholds(out float perfect, out float good, out float ok);
-                if (s >= perfect) { Perfect++; Streak++; LastJudgement = "Perfect"; }
+                if (s >= perfect) { Perfect++; Streak++; LastJudgement = "Perfect"; Buzz(0.5f, 0.08f); }
                 else if (s >= good) { GoodCount++; Streak++; LastJudgement = "Good"; }
                 else if (s >= ok) { Ok++; Streak = 0; LastJudgement = "OK"; }
                 else { Miss++; Streak = 0; LastJudgement = "Miss"; }
@@ -303,6 +320,13 @@ namespace Reachoreo
             else LastJudgement = BodyTracked ? "" : "Not tracked";
             LastJudgementAge = 0f;
             beatScoreSum = 0; beatFrames = beatTrackedFrames = 0;
+        }
+
+        /// <summary>A short controller vibration (nothing happens with hand tracking).</summary>
+        void Buzz(float amplitude, float seconds)
+        {
+            foreach (var h in FindObjectsByType<UnityEngine.XR.Interaction.Toolkit.Inputs.Haptics.HapticImpulsePlayer>(FindObjectsSortMode.None))
+                if (h.isActiveAndEnabled) h.SendHapticImpulse(amplitude, seconds);
         }
 
         static void Thresholds(out float perfect, out float good, out float ok)

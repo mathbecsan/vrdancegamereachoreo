@@ -73,7 +73,15 @@ namespace Reachoreo
             BuildMenu(anchor);
             BuildHud(anchor);
             director.Finished += OnDanceFinished;
-            Show("main");
+            GameSession.PlaceId = Places.Current.id;
+            string resume = GameSession.ResumeScreen; GameSession.ResumeScreen = null;
+            if (!string.IsNullOrEmpty(resume) && screens.ContainsKey(resume))
+            {
+                history.Push("main");
+                if (resume == "config") history.Push("songs");
+                Show(resume);
+            }
+            else Show("main");
         }
 
         // ================= Navigation =================
@@ -145,7 +153,7 @@ namespace Reachoreo
             UiKit.Spacer(nav);
             navContinue = UiKit.Button(nav, "Continue", () => { var s = screens[current]; s.onContinue?.Invoke(); }, UiKit.Style.Primary, 260);
 
-            BuildMain(); BuildSongs(); BuildConfig(); BuildPre(); BuildHowTo(); BuildSettings(); BuildSummary();
+            BuildMain(); BuildSongs(); BuildConfig(); BuildPre(); BuildHowTo(); BuildSettings(); BuildSummary(); BuildPlaces();
             BuildExitConfirm();
         }
 
@@ -177,9 +185,10 @@ namespace Reachoreo
 
             var buttons = UiKit.VStack(row, "Buttons", 14, 10, TextAnchor.MiddleCenter); UiKit.Size(buttons, flexW: 1, flexH: 1);
             UiKit.Button(buttons, "Start dancing", () => Go("songs"), UiKit.Style.Primary, -1, 84, 30);
-            UiKit.Button(buttons, "Free dance", StartFreeDance, UiKit.Style.Secondary, -1, 70, 26);
-            UiKit.Button(buttons, "How to play", () => Go("howto"), UiKit.Style.Secondary, -1, 70, 26);
-            UiKit.Button(buttons, "Settings", () => Go("settings"), UiKit.Style.Secondary, -1, 70, 26);
+            UiKit.Button(buttons, "Free dance", StartFreeDance, UiKit.Style.Secondary, -1, 64, 26);
+            UiKit.Button(buttons, "Places", () => Go("places"), UiKit.Style.Secondary, -1, 64, 26);
+            UiKit.Button(buttons, "How to play", () => Go("howto"), UiKit.Style.Secondary, -1, 64, 26);
+            UiKit.Button(buttons, "Settings", () => Go("settings"), UiKit.Style.Secondary, -1, 64, 26);
             UiKit.Button(buttons, "Exit", () => exitConfirm.gameObject.SetActive(true), UiKit.Style.Quiet, -1, 60, 24);
         }
 
@@ -300,14 +309,13 @@ namespace Reachoreo
                 }
             });
             Heading(c1, "Place");
-            var places = new[] { ("studio", "SRC dance studio", true), ("kitchen", "SRC kitchen\n(soon)", false), ("meyer", "Meyer Green\n(soon)", false), ("mcmurtry", "McMurtry\n(soon)", false) };
             var placeGrid = UiKit.Box(c1, "Places"); UiKit.Size(placeGrid, h: 112);
             var pg = placeGrid.gameObject.AddComponent<GridLayoutGroup>(); pg.cellSize = new Vector2(166, 52); pg.spacing = new Vector2(8, 8);
-            foreach (var (id, label, ready) in places)
+            foreach (var place in Places.All)
             {
-                var pid = id;
-                var b = UiKit.Button(placeGrid, label, () => { GameSession.PlaceId = pid; Refresh(); }, UiKit.Style.Secondary, -1, 52, 16);
-                b.interactable = ready;
+                if (!place.ready) continue;
+                var pid = place.id;
+                var b = UiKit.Button(placeGrid, place.name, () => { if (pid != Places.Current.id) Places.Travel(pid, "config"); }, UiKit.Style.Secondary, -1, 52, 16);
                 s.refresh.Add(() => UiKit.SetSelected(b, GameSession.PlaceId == pid));
             }
 
@@ -377,7 +385,7 @@ namespace Reachoreo
                 var d = GameSession.Song; if (d == null) { summary.text = ""; return; }
                 var sec = d.sections[Mathf.Clamp(GameSession.Section, 0, d.sections.Count - 1)];
                 string robots = GameSession.LeftReachy && GameSession.RightReachy ? "Both Reachys" : GameSession.LeftReachy ? "Left Reachy only" : GameSession.RightReachy ? "Right Reachy only" : "No Reachys";
-                summary.text = $"<b>{d.title}</b>  ·  {d.artist}\n{sec.name}, {Clock(sec.end - sec.start)}\nSRC dance studio\n{robots}{(GameSession.ReachysInSync ? ", in sync" : "")}\n" +
+                summary.text = $"<b>{d.title}</b>  ·  {d.artist}\n{sec.name}, {Clock(sec.end - sec.start)}\n{Places.Current.name}\n{robots}{(GameSession.ReachysInSync ? ", in sync" : "")}\n" +
                                $"Coach: {(GameSession.ShowCoach ? (director.coach != null && director.coach.facing == DanceCoach.Facing.FacingYou ? "facing you" : "back to you") : "hidden")}\n" +
                                $"{(GameSession.SeatedUpperBody ? "Seated" : "Standing")}, count-in {(GameSession.CountIn ? "on" : "off")}";
             });
@@ -385,7 +393,7 @@ namespace Reachoreo
             var right = UiKit.Panel(row, "Checks", UiKit.CardDim, 22, 12); UiKit.Size(right, flexW: 1, flexH: 1);
             Heading(right, "Ready check");
             Check(s, right, () =>
-                director.BodyTracked ? (UiKit.Good, "Body tracking: tracking you") : (UiKit.Warn, "Body tracking: not detected yet. Stand on the cross with your arms in view."));
+                director.BodyTracked ? (UiKit.Good, "Body tracking: tracking you") : (UiKit.Warn, "Body tracking: " + director.TrackingStatus));
             Check(s, right, () => (UiKit.Good, "Reachys: virtual Reachys ready"));
             Check(s, right, () => (UiKit.Faint, "Real robots: not connected (comes with the Reachoreo app link)"));
             Check(s, right, () => (UiKit.Good, GameSession.Song != null && GameSession.Song.hasMusicFile
@@ -412,7 +420,7 @@ namespace Reachoreo
             var s = NewScreen("howto", "How to play");
             var grid = UiKit.Box(s.root, "Tips"); UiKit.Stretch(grid);
             var g = grid.gameObject.AddComponent<GridLayoutGroup>(); g.cellSize = new Vector2(344, 250); g.spacing = new Vector2(16, 16);
-            Tip(grid, "Point or poke", "Touch a button with your fingertip, or point your hand or controller at it and pinch or pull the trigger.");
+            Tip(grid, "Hands or controllers", "Use either, and switch any time: pick up the Touch controllers or put them down. Poke a button, or point the ray at it and pull the trigger (or pinch).");
             Tip(grid, "Stay on your mark", "Stand on the orange cross with about 2 x 2 m of clear space. During a dance you never move artificially.");
             Tip(grid, "Follow the coach", "Copy the coral coach in front of you. \"Back to you\": copy directly. \"Facing you\": they are your mirror image. A on the right controller switches.");
             Tip(grid, "See yourself", "Your tracked body is the blue-teal figure in the mirror. Reachy A dances on your left, Reachy B on your right.");
@@ -450,6 +458,26 @@ namespace Reachoreo
                 "Reachoreo VR, early build.\n\n" +
                 "Reachy Mini 3D model and rig by Clement Plays, published by Pollen Robotics (Apache-2.0).\n\n" +
                 "Coach, avatar and rooms: made for Reachoreo.\n\n" + MusicCredits(), 17, UiKit.Ink), h: 330);
+        }
+
+        // ---------- Places ----------
+        void BuildPlaces()
+        {
+            var s = NewScreen("places", "Choose a place");
+            var grid = UiKit.Box(s.root, "Places"); UiKit.Stretch(grid);
+            var g = grid.gameObject.AddComponent<GridLayoutGroup>(); g.cellSize = new Vector2(344, 250); g.spacing = new Vector2(16, 16);
+            foreach (var place in Places.All)
+            {
+                var p = place;
+                Button card = UiKit.Button(grid, "", () => { if (p.ready && p.id != Places.Current.id) Places.Travel(p.id, "main"); });
+                card.transform.Find("Label").gameObject.SetActive(false);
+                card.interactable = p.ready;
+                var col = UiKit.VStack(card.transform, "Card", 8, 14); UiKit.Stretch(col);
+                var tile = UiKit.Box(col, "Art"); UiKit.Size(tile, h: 120); UiKit.Fill(tile, p.color);
+                UiKit.Size(UiKit.Text(col, p.name, 24, UiKit.Ink, true), h: 30);
+                var sub = UiKit.Text(col, p.blurb, 17, UiKit.Mute); UiKit.Size(sub, h: 44);
+                s.refresh.Add(() => { bool here = p.id == Places.Current.id; UiKit.SetSelected(card, here, new Color(0.34f, 0.22f, 0.19f, 1f)); sub.text = here ? "You are here." : p.blurb; });
+            }
         }
 
         // ---------- 06 Summary ----------

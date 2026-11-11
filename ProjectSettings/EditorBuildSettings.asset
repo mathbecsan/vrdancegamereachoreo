@@ -8,6 +8,15 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Reachoreo/Scenes/Place_DanceStudio.unity
     guid: cec579d407677458990d7a03ed54b421
+  - enabled: 1
+    path: Assets/Reachoreo/Scenes/Place_HooverTower.unity
+    guid: 264ea065d3bcd4be8bae82cf70ff1f8f
+  - enabled: 1
+    path: Assets/Reachoreo/Scenes/Place_MemorialChurch.unity
+    guid: 68ea793afe1c84e4086afcb8cc928ade
+  - enabled: 1
+    path: Assets/Reachoreo/Scenes/Place_McMurtry.unity
+    guid: b6b970c14735246668affc772164b1f2
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 18e89ad3146267a4a87cac721d527752, type: 2}
     Unity.XR.WindowsMR.Settings: {fileID: 11400000, guid: dc5a169419fa04987b057f65238cf3ba, type: 2}

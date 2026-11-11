@@ -8,8 +8,8 @@ namespace Reachoreo
     /// pieces follow the joints from Quest body tracking (Meta Movement SDK, full-body joint set:
     /// tracked upper body, generated legs).
     ///
-    /// By default it is only visible in the mirror (MirrorWorld shows a reflected copy), so looking
-    /// down you see your normal hands. Turn on showInFirstPerson to see it directly too.
+    /// Look down and you see your body (head and neck are hidden so they don't block your eyes); the
+    /// mirror (MirrorWorld) shows all of it.
     /// </summary>
     [DefaultExecutionOrder(900)]
     public class SelfAvatar : MonoBehaviour
@@ -17,7 +17,7 @@ namespace Reachoreo
         public OVRSkeleton skeleton;
         public Material bodyMaterial;
         public Material jointMaterial;
-        public bool showInFirstPerson = false;
+        public bool showInFirstPerson = true;
 
         [Tooltip("Shown while body tracking has data. Visuals are built under it.")]
         public Transform visuals;
@@ -81,8 +81,11 @@ namespace Reachoreo
             g.transform.SetParent(visuals, false);
             var r = g.GetComponent<MeshRenderer>();
             if (m != null) r.sharedMaterial = m;
-            r.enabled = showInFirstPerson;
+            r.enabled = showInFirstPerson && !InsideHead(g.name);
         }
+
+        /// <summary>The head and neck sit around your eyes: never drawn for you (only in the mirror).</summary>
+        static bool InsideHead(string n) => n.StartsWith("Head") || n.StartsWith("Neck");
 
         void LateUpdate()
         {
@@ -119,7 +122,7 @@ namespace Reachoreo
         public void SetShowInFirstPerson(bool show)
         {
             showInFirstPerson = show;
-            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true)) r.enabled = show;
+            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true)) r.enabled = show && !InsideHead(r.name);
         }
     }
 }
