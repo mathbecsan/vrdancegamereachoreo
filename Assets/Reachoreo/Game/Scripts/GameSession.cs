@@ -29,6 +29,10 @@ namespace Reachoreo
         public static SyncTolerance Tolerance = SyncTolerance.Normal;
         public static bool ShowBodyFirstPerson = true;
 
+        // Real robots
+        public static bool RealRobots;                 // send the Reachys' moves to the real Reachy Minis
+        public static int Leader = 2;                  // Follow me: 0 = Reachy A, 1 = Reachy B, 2 = both
+
         // Calibration (measured once, redo from Settings)
         public static bool Calibrated;
         public static float Height, ArmSpan, ArmLength, ShoulderWidth;
@@ -45,6 +49,7 @@ namespace Reachoreo
             Tolerance = (SyncTolerance)PlayerPrefs.GetInt("sync_tolerance", (int)Tolerance);
             ShowBodyFirstPerson = PlayerPrefs.GetInt("body_first_person_v2", 1) == 1;
             Calibrated = PlayerPrefs.GetInt("calibrated", 0) == 1;
+            RealRobots = PlayerPrefs.GetInt("real_robots", 0) == 1; Leader = PlayerPrefs.GetInt("leader", 2);
             Height = PlayerPrefs.GetFloat("cal_height", 0f); ArmSpan = PlayerPrefs.GetFloat("cal_span", 0f);
             ArmLength = PlayerPrefs.GetFloat("cal_arm", 0f); ShoulderWidth = PlayerPrefs.GetFloat("cal_shoulders", 0f);
             foreach (var id in PlayerPrefs.GetString("favorites", "").Split(','))
@@ -58,6 +63,7 @@ namespace Reachoreo
             PlayerPrefs.SetInt("sync_tolerance", (int)Tolerance);
             PlayerPrefs.SetInt("body_first_person_v2", ShowBodyFirstPerson ? 1 : 0);
             PlayerPrefs.SetInt("calibrated", Calibrated ? 1 : 0);
+            PlayerPrefs.SetInt("real_robots", RealRobots ? 1 : 0); PlayerPrefs.SetInt("leader", Leader);
             PlayerPrefs.SetFloat("cal_height", Height); PlayerPrefs.SetFloat("cal_span", ArmSpan);
             PlayerPrefs.SetFloat("cal_arm", ArmLength); PlayerPrefs.SetFloat("cal_shoulders", ShoulderWidth);
             PlayerPrefs.SetString("favorites", string.Join(",", favorites));

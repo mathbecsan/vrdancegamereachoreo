@@ -34,6 +34,9 @@ namespace Reachoreo
         [Tooltip("Both Reachys dance Reachy A's part, in sync.")]
         public bool bothDanceA;
 
+        [Tooltip("Another script moves this robot (Follow me): the player leaves it alone.")]
+        public bool externalA, externalB;
+
         float step = 0.05f;
         float[][] framesA, framesB;   // per frame: yaw, pitch, roll, body, turn, antL, antR, bob
         float t, loopStart, loopEnd = -1f, idleTime;
@@ -94,8 +97,8 @@ namespace Reachoreo
 
         void Apply()
         {
-            if (reachyA != null && reachyA.isActiveAndEnabled) reachyA.SetPose(ToSdk(Sample(framesA, t)));
-            if (reachyB != null && reachyB.isActiveAndEnabled) reachyB.SetPose(ToSdk(Sample(bothDanceA ? framesA : framesB, t)));
+            if (reachyA != null && reachyA.isActiveAndEnabled && !externalA) reachyA.SetPose(ToSdk(Sample(framesA, t)));
+            if (reachyB != null && reachyB.isActiveAndEnabled && !externalB) reachyB.SetPose(ToSdk(Sample(bothDanceA ? framesA : framesB, t)));
         }
 
         /// <summary>A calm "alive" pose for menus: slow breathing, a look around, antennas swaying.</summary>
@@ -104,7 +107,7 @@ namespace Reachoreo
             for (int k = 0; k < 2; k++)
             {
                 var r = k == 0 ? reachyA : reachyB;
-                if (r == null || !r.isActiveAndEnabled) continue;
+                if (r == null || !r.isActiveAndEnabled || (k == 0 ? externalA : externalB)) continue;
                 float p = idleTime + k * 1.7f;
                 var c = new SdkCommand
                 {
@@ -121,6 +124,16 @@ namespace Reachoreo
         }
 
         public void Restart() { t = loopStart; }
+
+        public bool HasFrames => framesA != null;
+
+        /// <summary>A robot's pose at a dance time, in SDK units (side 0 = Reachy A, 1 = Reachy B). Used to send
+        /// the real robots their moves a little early, so they land on the beat despite their motor delay.</summary>
+        public SdkCommand SampleSdk(int side, float time)
+        {
+            var f = side == 0 || bothDanceA ? framesA : framesB;
+            return ToSdk(Sample(f, Mathf.Clamp(time, 0f, Duration)));
+        }
 
         float[] Sample(float[][] f, float time)
         {

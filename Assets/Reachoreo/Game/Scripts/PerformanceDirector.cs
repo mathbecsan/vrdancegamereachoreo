@@ -14,7 +14,7 @@ namespace Reachoreo
     /// </summary>
     public class PerformanceDirector : MonoBehaviour
     {
-        public enum State { Menu, Preview, Loading, CountIn, Playing, Paused, FreeDance, Finished }
+        public enum State { Menu, Preview, Loading, CountIn, Playing, Paused, FreeDance, FollowMe, Finished }
 
         public EncendidoRobotPlayer robots;
         public DanceCoach coach;
@@ -58,12 +58,15 @@ namespace Reachoreo
         }
         string lastStatus; float statusTimer;
         public bool PlayingRealSong => music.clip != null && music.isPlaying;
+        public bool Following => state == State.FollowMe || (state == State.Paused && resumeTo == State.FollowMe);
         public event Action Finished;
 
         float scoreSum; int judgedBeats, totalBeats, trackedBeats;
         float beatScoreSum; int beatFrames, beatTrackedFrames; int lastBeat = -1;
 
         AudioSource click, music;
+        public ReachyLink link { get; private set; }
+        public FollowMe follow { get; private set; }
 
         void Awake()
         {
@@ -77,6 +80,13 @@ namespace Reachoreo
             click.playOnAwake = false; click.loop = true; click.spatialBlend = 0f;
             music = gameObject.AddComponent<AudioSource>();
             music.playOnAwake = false; music.loop = false; music.spatialBlend = 0f;
+            link = GetComponent<ReachyLink>() ?? gameObject.AddComponent<ReachyLink>();
+            follow = GetComponent<FollowMe>() ?? gameObject.AddComponent<FollowMe>();
+            // The real robots get each move a little early (their motor delay) while a dance plays.
+            link.poseSource = (side, early) =>
+                state == State.Playing || state == State.Preview || state == State.FreeDance || state == State.CountIn
+                    ? robots.HasFrames && !(side == 0 ? robots.externalA : robots.externalB) ? robots.SampleSdk(side, danceTime + early) : (SdkCommand?)null
+                    : null;
         }
 
         void Start()
@@ -98,8 +108,28 @@ namespace Reachoreo
 
         // ---------- States ----------
 
+        /// <summary>Follow me: the chosen Reachys copy your head and hands; the music plays if the song has one.</summary>
+        public void StartFollowMe()
+        {
+            var d = GameSession.Song ?? (DanceLibrary.All.Count > 0 ? DanceLibrary.All[0] : null);
+            if (d == null) return;
+            Use(d); section = null;
+            Time.timeScale = 1f; StopAudio();
+            robots.SetEnabled(true, true); robots.bothDanceA = false; robots.Idle();
+            robots.externalA = GameSession.Leader != 1; robots.externalB = GameSession.Leader != 0;
+            follow.Begin((FollowMe.Who)GameSession.Leader);
+            if (coach != null) coach.gameObject.SetActive(false);
+            loopStart = 0f; loopEnd = d.durationSec; danceTime = 0f; elapsed = 0f;
+            state = State.FollowMe;
+            if (d.hasMusicFile) StartCoroutine(WhenSongReady(d, () => { if (state == State.FollowMe && song == d) PlayMusicAt(danceTime); }));
+            else PlayClick(Bpm);
+        }
+
+        void StopFollow() { if (follow != null) follow.End(); robots.externalA = robots.externalB = false; }
+
         public void ToMenu()
         {
+            StopFollow();
             Time.timeScale = 1f;
             StopAudio();
             state = State.Menu;
@@ -121,6 +151,7 @@ namespace Reachoreo
 
         public void StartDance(DanceInfo d, int sectionIndex)
         {
+            StopFollow();
             Use(d); section = d.sections[Mathf.Clamp(sectionIndex, 0, d.sections.Count - 1)];
             Time.timeScale = 1f;
             StopAudio();
@@ -151,6 +182,7 @@ namespace Reachoreo
         {
             var d = GameSession.Song ?? (DanceLibrary.All.Count > 0 ? DanceLibrary.All[0] : null);
             if (d == null) return;
+            StopFollow();
             Use(d); section = null;
             Time.timeScale = 1f;
             StopAudio();
@@ -165,7 +197,7 @@ namespace Reachoreo
 
         public void Pause()
         {
-            if (state != State.Playing && state != State.CountIn && state != State.FreeDance) return;
+            if (state != State.Playing && state != State.CountIn && state != State.FreeDance && state != State.FollowMe) return;
             resumeTo = state; state = State.Paused;
             Time.timeScale = 0f; click.Pause(); music.Pause();
         }
@@ -179,7 +211,8 @@ namespace Reachoreo
         public void Restart()
         {
             if (song == null) return;
-            if (section == null) StartFreeDance(); else StartDance(song, song.sections.IndexOf(section));
+            if (state == State.FollowMe || (state == State.Paused && resumeTo == State.FollowMe)) StartFollowMe();
+            else if (section == null) StartFreeDance(); else StartDance(song, song.sections.IndexOf(section));
         }
 
         public void Finish()
@@ -233,6 +266,11 @@ namespace Reachoreo
             if (statusTimer > 3f) { statusTimer = 0f; var st = TrackingStatus; if (st != lastStatus) { lastStatus = st; Debug.Log("Reachoreo: body tracking " + st); } }
             switch (state)
             {
+                case State.FollowMe:
+                    if (music.isPlaying) danceTime = music.time - Downbeat; else danceTime += dt;
+                    elapsed += dt;
+                    if (danceTime >= loopEnd) { danceTime = loopStart; if (song.songClip != null) PlayMusicAt(danceTime); }
+                    return;
                 case State.Preview:
                 case State.FreeDance:
                     // Follow the music when it plays, else our own clock; loop the stretch.

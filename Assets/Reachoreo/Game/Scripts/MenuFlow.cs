@@ -186,11 +186,12 @@ namespace Reachoreo
             UiKit.Size(UiKit.Text(left, "Follow the coach in front of you, watch yourself in the mirror, and keep in sync with the robots beside you.", 21, UiKit.Mute), h: 80);
 
             var buttons = UiKit.VStack(row, "Buttons", 14, 10, TextAnchor.MiddleCenter); UiKit.Size(buttons, flexW: 1, flexH: 1);
-            UiKit.Button(buttons, "Start dancing", () => { if (GameSession.Calibrated) Go("songs"); else { history.Push("main"); StartCalibration("songs"); } }, UiKit.Style.Primary, -1, 84, 30);
-            UiKit.Button(buttons, "Free dance", StartFreeDance, UiKit.Style.Secondary, -1, 64, 26);
-            UiKit.Button(buttons, "Places", () => Go("places"), UiKit.Style.Secondary, -1, 64, 26);
-            UiKit.Button(buttons, "How to play", () => Go("howto"), UiKit.Style.Secondary, -1, 64, 26);
-            UiKit.Button(buttons, "Settings", () => Go("settings"), UiKit.Style.Secondary, -1, 64, 26);
+            UiKit.Button(buttons, "Start dancing", () => { if (GameSession.Calibrated) Go("songs"); else { history.Push("main"); StartCalibration("songs"); } }, UiKit.Style.Primary, -1, 72, 28);
+            UiKit.Button(buttons, "Free dance", StartFreeDance, UiKit.Style.Secondary, -1, 58, 24);
+            UiKit.Button(buttons, "Follow me: lead the Reachys", StartFollowMe, UiKit.Style.Secondary, -1, 58, 22);
+            UiKit.Button(buttons, "Places", () => Go("places"), UiKit.Style.Secondary, -1, 58, 24);
+            UiKit.Button(buttons, "How to play", () => Go("howto"), UiKit.Style.Secondary, -1, 58, 24);
+            UiKit.Button(buttons, "Settings", () => Go("settings"), UiKit.Style.Secondary, -1, 58, 24);
             UiKit.Button(buttons, "Exit", () => exitConfirm.gameObject.SetActive(true), UiKit.Style.Quiet, -1, 60, 24);
         }
 
@@ -458,12 +459,23 @@ namespace Reachoreo
             Heading(c1, "Visuals");
             Toggle(s, c1, "My body when I look down", () => GameSession.ShowBodyFirstPerson, v => { GameSession.ShowBodyFirstPerson = v; GameSession.Save(); director.ApplySettings(); });
 
-            var c2 = UiKit.Panel(row, "About", UiKit.CardDim, 20, 8); UiKit.Size(c2, 418, flexW: 0, flexH: 1);
+            var c2 = UiKit.Panel(row, "Robots", UiKit.CardDim, 20, 8); UiKit.Size(c2, 418, flexW: 0, flexH: 1);
+            Heading(c2, "Real Reachy Minis");
+            Toggle(s, c2, "Send moves", () => ReachyLink.Enabled, v => ReachyLink.Enabled = v);
+            Choice(s, c2, "Follow me", new[] { "A", "B", "Both" }, () => GameSession.Leader, v => { GameSession.Leader = v; GameSession.Save(); }, 120);
+            var robotStatus = UiKit.Text(c2, "", 16, UiKit.Ink); UiKit.Size(robotStatus, h: 92);
+            s.refresh.Add(() =>
+            {
+                var l = director.link;
+                robotStatus.text = l == null ? "" : !ReachyLink.Enabled ? "Off. Turn on to make your real Reachys move with the game." :
+                    $"Reachy A: {l.a.status}\nReachy B: {l.b.status}\nPlug the headset into the Mac and run Tools/reachy_link.sh.";
+            });
+            s.live = true;
             Heading(c2, "About");
             UiKit.Size(UiKit.Text(c2,
                 "Reachoreo VR, early build.\n\n" +
                 "Reachy Mini 3D model and rig by Clement Plays, published by Pollen Robotics (Apache-2.0).\n\n" +
-                "Coach, avatar and rooms: made for Reachoreo.\n\n" + MusicCredits(), 17, UiKit.Ink), h: 330);
+                "Coach, avatar and rooms: made for Reachoreo.\n" + MusicCredits(), 14, UiKit.Ink), h: 150);
         }
 
         // ---------- Calibration (required before dancing) ----------
@@ -704,6 +716,13 @@ namespace Reachoreo
             director.StartDance(GameSession.Song, GameSession.Section);
         }
 
+        void StartFollowMe()
+        {
+            history.Clear(); history.Push("main");
+            HideMenuForDance();
+            director.StartFollowMe();
+        }
+
         void StartFreeDance()
         {
             history.Clear(); history.Push("main");
@@ -725,10 +744,12 @@ namespace Reachoreo
             hudPlayRow.gameObject.SetActive(!paused);
             hudPauseRow.gameObject.SetActive(paused);
             hudEnd.gameObject.SetActive(free);
+            UiKit.SetLabel(hudEnd, director.Following ? "End follow me" : "End free dance");
 
             if (free)
             {
-                hudPhrase.text = "Free dance: " + (director.song != null ? director.song.title : "") + " · move however you like";
+                hudPhrase.text = director.Following ? "Follow me: the Reachys copy your head and hands" + (ReachyLink.Enabled ? " (real robots too)" : "")
+                               : "Free dance: " + (director.song != null ? director.song.title : "") + " · move however you like";
                 hudTime.text = Clock(director.Elapsed);
                 hudFill.anchorMax = new Vector2(0, 1);
                 hudBig.text = paused ? "Paused" : "";

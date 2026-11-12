@@ -135,8 +135,13 @@ namespace Reachoreo
 
         /// <summary>Pose the robot from SDK units. The head pose is in the robot's base frame
         /// (create_head_pose: R.from_euler("xyz", [roll, pitch, yaw]) plus z up), so head yaw includes the body yaw.</summary>
+        /// <summary>The last pose given to this robot, in SDK units (what a real Reachy Mini would be sent).</summary>
+        public SdkCommand LastCommand { get; private set; }
+
         public void SetPose(float rollDeg, float pitchDeg, float yawDeg, float zMm, float bodyYaw, float antRight, float antLeft)
         {
+            LastCommand = new SdkCommand { headRollDeg = rollDeg, headPitchDeg = pitchDeg, headYawDeg = yawDeg, headZmm = zMm,
+                                           bodyYawRad = bodyYaw, antennaRightRad = antRight, antennaLeftRad = antLeft };
             if (!ready) return;
             core.localRotation = coreRest * Quaternion.AngleAxis(bodySign * bodyYaw * Mathf.Rad2Deg, Vector3.up);
 
