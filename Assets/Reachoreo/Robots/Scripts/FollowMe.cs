@@ -33,8 +33,11 @@ namespace Reachoreo
             }
         }
 
+        float logTimer;
+
         public void Begin(Who w)
         {
+            Debug.Log($"Reachoreo: Follow me started ({w}); head={(head != null ? head.name : "none")}");
             who = w; active = true; haveSmooth = false;
             standHeight = GameSession.Calibrated && GameSession.Height > 1f ? GameSession.Height - 0.11f : (head != null ? head.position.y : 1.6f);
         }
@@ -49,8 +52,15 @@ namespace Reachoreo
             float k = 1f - Mathf.Exp(-12f * Time.deltaTime);   // ~12 Hz low-pass: steady, still quick
             smooth = Lerp(smooth, c, k);
             var robots = director.robots;
-            if ((who == Who.ReachyA || who == Who.Both) && robots.reachyA != null && robots.reachyA.isActiveAndEnabled) robots.reachyA.SetPose(smooth);
-            if ((who == Who.ReachyB || who == Who.Both) && robots.reachyB != null && robots.reachyB.isActiveAndEnabled) robots.reachyB.SetPose(smooth);
+            logTimer += Time.deltaTime;
+            if (logTimer > 3f) { logTimer = 0f; Debug.Log($"Reachoreo: Follow me -> head yaw {smooth.headYawDeg:0} pitch {smooth.headPitchDeg:0} roll {smooth.headRollDeg:0}, body {smooth.bodyYawRad * Mathf.Rad2Deg:0}, antennas L {smooth.antennaLeftRad:0.00} R {smooth.antennaRightRad:0.00}"); }
+            // A real Reachy that's connected always follows you, whatever robot the setting names.
+            var link = director.link;
+            bool realA = link != null && ReachyLink.Enabled && link.a.connected, realB = link != null && ReachyLink.Enabled && link.b.connected;
+            bool doA = who != Who.ReachyB || realA, doB = who != Who.ReachyA || realB;
+            robots.externalA = doA; robots.externalB = doB;
+            if (doA && robots.reachyA != null && robots.reachyA.isActiveAndEnabled) robots.reachyA.SetPose(smooth);
+            if (doB && robots.reachyB != null && robots.reachyB.isActiveAndEnabled) robots.reachyB.SetPose(smooth);
         }
 
         SdkCommand Measure()

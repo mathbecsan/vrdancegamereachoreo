@@ -40,6 +40,7 @@ namespace Reachoreo
             [NonSerialized] public SdkCommand sent; [NonSerialized] public bool haveSent;
             [NonSerialized] public readonly ConcurrentQueue<string> outbox = new ConcurrentQueue<string>();
             [NonSerialized] public float retryAt;
+            [NonSerialized] public volatile bool warned;
         }
 
         public Robot a = new Robot { name = "Reachy A", port = 8000, latency = 0.16f };
@@ -163,7 +164,7 @@ namespace Reachoreo
                         await ws.ConnectAsync(uri, timeout.Token);
                     }
                     r.ws = ws; r.connected = true; r.haveSent = false; r.status = $"connected ({r.host}:{r.port})";
-                    Debug.Log($"Reachoreo: {r.name} connected at {r.host}:{r.port}");
+                    r.warned = false; Debug.Log($"Reachoreo: {r.name} connected at {r.host}:{r.port}");
                     _ = Task.Run(() => Drain(ws, token));
                     while (!token.IsCancellationRequested && ws.State == WebSocketState.Open)
                     {
@@ -176,7 +177,7 @@ namespace Reachoreo
                 catch (Exception e)
                 {
                     r.status = e is OperationCanceledException ? $"not found at {r.host}:{r.port}" : $"not reachable at {r.host}:{r.port}";
-                    Debug.LogWarning($"Reachoreo: {r.name} link failed ({r.host}:{r.port}): {e.GetType().Name}: {e.Message}");
+                    if (!r.warned) { r.warned = true; Debug.LogWarning($"Reachoreo: {r.name} link failed ({r.host}:{r.port}): {e.GetType().Name}: {e.Message}"); }
                 }
                 finally
                 {

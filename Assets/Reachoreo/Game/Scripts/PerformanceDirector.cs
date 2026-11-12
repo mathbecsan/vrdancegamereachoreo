@@ -112,7 +112,7 @@ namespace Reachoreo
         public void StartFollowMe()
         {
             var d = GameSession.Song ?? (DanceLibrary.All.Count > 0 ? DanceLibrary.All[0] : null);
-            if (d == null) return;
+            if (d == null) { Debug.LogWarning("Reachoreo: Follow me could not start: no dances loaded yet"); return; }
             Use(d); section = null;
             Time.timeScale = 1f; StopAudio();
             robots.SetEnabled(true, true); robots.bothDanceA = false; robots.Idle();
