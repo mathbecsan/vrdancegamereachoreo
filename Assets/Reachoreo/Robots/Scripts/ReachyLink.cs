@@ -29,7 +29,7 @@ namespace Reachoreo
         public class Robot
         {
             public string name = "Reachy A";
-            public string host = "localhost";
+            public string host = "127.0.0.1";   // with adb reverse, the headset reaches the Mac through the USB cable
             public int port = 8000;
             [Tooltip("Send moves this much early (s): the robot's motor delay (reachy-dance show.yaml latency_s).")]
             public float latency = 0.16f;
@@ -163,6 +163,7 @@ namespace Reachoreo
                         await ws.ConnectAsync(uri, timeout.Token);
                     }
                     r.ws = ws; r.connected = true; r.haveSent = false; r.status = $"connected ({r.host}:{r.port})";
+                    Debug.Log($"Reachoreo: {r.name} connected at {r.host}:{r.port}");
                     _ = Task.Run(() => Drain(ws, token));
                     while (!token.IsCancellationRequested && ws.State == WebSocketState.Open)
                     {
@@ -175,6 +176,7 @@ namespace Reachoreo
                 catch (Exception e)
                 {
                     r.status = e is OperationCanceledException ? $"not found at {r.host}:{r.port}" : $"not reachable at {r.host}:{r.port}";
+                    Debug.LogWarning($"Reachoreo: {r.name} link failed ({r.host}:{r.port}): {e.GetType().Name}: {e.Message}");
                 }
                 finally
                 {

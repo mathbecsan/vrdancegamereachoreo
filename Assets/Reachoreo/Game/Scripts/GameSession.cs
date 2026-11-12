@@ -27,7 +27,7 @@ namespace Reachoreo
         public static float MusicVolume = 0.8f;
         public static float RobotVolume = 0.6f;
         public static SyncTolerance Tolerance = SyncTolerance.Normal;
-        public static bool ShowBodyFirstPerson = true;
+        public static int BodyView = 1;             // looking down: 0 = mirror only, 1 = forearms and hands, 2 = whole body (see-through)
 
         // Real robots
         public static bool RealRobots;                 // send the Reachys' moves to the real Reachy Minis
@@ -47,7 +47,7 @@ namespace Reachoreo
             MusicVolume = PlayerPrefs.GetFloat("music_volume", MusicVolume);
             RobotVolume = PlayerPrefs.GetFloat("robot_volume", RobotVolume);
             Tolerance = (SyncTolerance)PlayerPrefs.GetInt("sync_tolerance", (int)Tolerance);
-            ShowBodyFirstPerson = PlayerPrefs.GetInt("body_first_person_v2", 1) == 1;
+            BodyView = PlayerPrefs.GetInt("body_view", 1);
             Calibrated = PlayerPrefs.GetInt("calibrated", 0) == 1;
             RealRobots = PlayerPrefs.GetInt("real_robots", 0) == 1; Leader = PlayerPrefs.GetInt("leader", 2);
             Height = PlayerPrefs.GetFloat("cal_height", 0f); ArmSpan = PlayerPrefs.GetFloat("cal_span", 0f);
@@ -61,7 +61,7 @@ namespace Reachoreo
             PlayerPrefs.SetFloat("music_volume", MusicVolume);
             PlayerPrefs.SetFloat("robot_volume", RobotVolume);
             PlayerPrefs.SetInt("sync_tolerance", (int)Tolerance);
-            PlayerPrefs.SetInt("body_first_person_v2", ShowBodyFirstPerson ? 1 : 0);
+            PlayerPrefs.SetInt("body_view", BodyView);
             PlayerPrefs.SetInt("calibrated", Calibrated ? 1 : 0);
             PlayerPrefs.SetInt("real_robots", RealRobots ? 1 : 0); PlayerPrefs.SetInt("leader", Leader);
             PlayerPrefs.SetFloat("cal_height", Height); PlayerPrefs.SetFloat("cal_span", ArmSpan);

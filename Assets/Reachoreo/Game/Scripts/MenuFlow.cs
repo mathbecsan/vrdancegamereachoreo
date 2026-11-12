@@ -457,7 +457,8 @@ namespace Reachoreo
             var calBtn = UiKit.Button(calRow, "Calibrate again", () => { history.Push(current); StartCalibration("settings"); }, UiKit.Style.Secondary, -1, 48, 19);
             s.refresh.Add(() => UiKit.SetLabel(calBtn, GameSession.Calibrated ? $"Calibrate again ({GameSession.Height:0.00} m)" : "Calibrate now"));
             Heading(c1, "Visuals");
-            Toggle(s, c1, "My body when I look down", () => GameSession.ShowBodyFirstPerson, v => { GameSession.ShowBodyFirstPerson = v; GameSession.Save(); director.ApplySettings(); });
+            Choice(s, c1, "My body (looking down)", new[] { "Off", "Arms", "Full" }, () => GameSession.BodyView,
+                   v => { GameSession.BodyView = v; GameSession.Save(); director.ApplySettings(); }, 200);
 
             var c2 = UiKit.Panel(row, "Robots", UiKit.CardDim, 20, 8); UiKit.Size(c2, 418, flexW: 0, flexH: 1);
             Heading(c2, "Real Reachy Minis");
@@ -754,6 +755,11 @@ namespace Reachoreo
                 hudFill.anchorMax = new Vector2(0, 1);
                 hudBig.text = paused ? "Paused" : "";
                 hudSmall.text = "";
+                if (director.Following && director.link != null)
+                {
+                    hudBig.fontSize = 22; hudBig.color = UiKit.Mute;
+                    hudBig.text = paused ? "Paused" : "Real Reachy A: " + director.link.a.status + "\nReal Reachy B: " + director.link.b.status;
+                }
                 return;
             }
             var song = director.song; var sec = director.section;

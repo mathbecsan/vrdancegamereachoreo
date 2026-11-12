@@ -100,7 +100,7 @@ namespace Reachoreo
         {
             click.volume = GameSession.MusicVolume * 0.7f;
             music.volume = GameSession.MusicVolume;
-            if (avatar != null) avatar.SetShowInFirstPerson(GameSession.ShowBodyFirstPerson);
+            if (avatar != null) avatar.SetView(GameSession.BodyView);
         }
 
         float Downbeat => song != null && song.hasMusicFile ? song.data.song.firstDownbeat : 0f;
@@ -118,6 +118,7 @@ namespace Reachoreo
             robots.SetEnabled(true, true); robots.bothDanceA = false; robots.Idle();
             robots.externalA = GameSession.Leader != 1; robots.externalB = GameSession.Leader != 0;
             follow.Begin((FollowMe.Who)GameSession.Leader);
+            if (!ReachyLink.Enabled) ReachyLink.Enabled = true;   // Follow me is for leading the real robots too
             if (coach != null) coach.gameObject.SetActive(false);
             loopStart = 0f; loopEnd = d.durationSec; danceTime = 0f; elapsed = 0f;
             state = State.FollowMe;

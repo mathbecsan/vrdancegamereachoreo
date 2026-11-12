@@ -17,7 +17,10 @@ namespace Reachoreo
         public OVRSkeleton skeleton;
         public Material bodyMaterial;
         public Material jointMaterial;
-        public bool showInFirstPerson = true;
+        [Tooltip("What you see of your body when you look down: 0 = nothing (mirror only), 1 = forearms and hands, 2 = everything. See-through either way.")]
+        public int firstPersonView = 1;
+        [Range(0.05f, 1f)] public float firstPersonOpacity = 0.3f;
+        Material ghostBody, ghostJoint;
 
         [Tooltip("Shown while body tracking has data. Visuals are built under it.")]
         public Transform visuals;
@@ -81,7 +84,31 @@ namespace Reachoreo
             g.transform.SetParent(visuals, false);
             var r = g.GetComponent<MeshRenderer>();
             if (m != null) r.sharedMaterial = m;
-            r.enabled = showInFirstPerson && !InsideHead(g.name);
+            r.enabled = ShowsFor(g.name, firstPersonView);
+        }
+
+        /// <summary>Arms view: just your forearms and hands, the parts you look at while dancing.</summary>
+        static bool ShowsFor(string n, int view) =>
+            view >= 2 ? !InsideHead(n) : view == 1 && (n.Contains("ArmLower") || n.Contains("Hand"));
+
+        System.Collections.IEnumerator Start()
+        {
+            // The mirror copies the solid materials first (MirrorWorld.Start); then your own view turns see-through.
+            yield return null;
+            ghostBody = Ghost(bodyMaterial); ghostJoint = Ghost(jointMaterial);
+            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true))
+                r.sharedMaterial = r.sharedMaterial == jointMaterial ? ghostJoint : ghostBody;
+        }
+
+        Material Ghost(Material m)
+        {
+            if (m == null) return null;
+            var g = new Material(m) { name = m.name + " (see-through)" };
+            g.SetFloat("_Surface", 1f); g.SetFloat("_Blend", 0f);
+            g.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha); g.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            g.SetFloat("_ZWrite", 0f); g.EnableKeyword("_SURFACE_TYPE_TRANSPARENT"); g.SetOverrideTag("RenderType", "Transparent"); g.renderQueue = 3000;
+            var c = m.GetColor("_BaseColor"); c.a = firstPersonOpacity; g.SetColor("_BaseColor", c);
+            return g;
         }
 
         /// <summary>The head and neck sit around your eyes: never drawn for you (only in the mirror).</summary>
@@ -119,10 +146,10 @@ namespace Reachoreo
             }
         }
 
-        public void SetShowInFirstPerson(bool show)
+        public void SetView(int view)
         {
-            showInFirstPerson = show;
-            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true)) r.enabled = show && !InsideHead(r.name);
+            firstPersonView = view;
+            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true)) r.enabled = ShowsFor(r.name, view);
         }
     }
 }
